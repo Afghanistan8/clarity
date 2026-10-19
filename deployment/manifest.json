@@ -1,0 +1,49 @@
+{
+  "manifest_version": 1,
+  "network": "studionet",
+  "chain_id": 61999,
+  "rpc": "https://studio.genlayer.com/api",
+  "manifest_sha256": "349d498169152ba771c42cb5014e9a973fd976e5d6afd4a7d10949f164ceee19",
+  "files": [
+    {
+      "path": "contracts/clarity.py",
+      "bytes": 52526,
+      "sha256": "6005c617fd8b08bf8bb10df36421d2e38e7cd147bf53c5753370290266bc112d"
+    },
+    {
+      "path": "scripts/common.mjs",
+      "bytes": 5421,
+      "sha256": "7cef6408588edc3ecb2284cab5af2c199c86c8ce2513dff7c1b2654f36ea607b"
+    },
+    {
+      "path": "scripts/deploy.mjs",
+      "bytes": 2203,
+      "sha256": "99174388fbbe707c3cf5bacdf6399a56ad4ea3fd593731ee38b26c638ba139ab"
+    },
+    {
+      "path": "scripts/verify.mjs",
+      "bytes": 2590,
+      "sha256": "99fae2a68e092e9b2540692ae98aada2b6a510e4c388f763ae362f01efd75e5f"
+    },
+    {
+      "path": "scripts/e2e.mjs",
+      "bytes": 10829,
+      "sha256": "06b895ab233b03c8730832a8299beffc34ac6d6d12ea0b2e225af0e58169d190"
+    },
+    {
+      "path": "demo/evidence.md",
+      "bytes": 681,
+      "sha256": "860318d3b99680297966cc1534a5f0ced6a20c904473bbc0d3ec3905435716bd"
+    },
+    {
+      "path": "tests/mirror.py",
+      "bytes": 3551,
+      "sha256": "0580ae69c226e2af91568f94c44a10a188f8123e9f72f7bee989bbbfa8605859"
+    },
+    {
+      "path": "tests/conftest.py",
+      "bytes": 5591,
+      "sha256": "c03ed63a6b5464d3853ea5542c7495be8a77f4d7078572d56491435e93940c31"
+    }
+  ]
+}

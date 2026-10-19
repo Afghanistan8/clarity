@@ -1,0 +1,24 @@
+{
+  "name": "clarity",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Clarity - GenLayer-native public-promise stakes (vows backed by GEN, evidence judged by consensus validators)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "python -m pytest tests/ -q",
+    "lint": "genvm-lint lint contracts/clarity.py",
+    "deploy": "node scripts/deploy.mjs",
+    "verify": "node scripts/verify.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "web:install": "cd web && npm ci --no-audit --no-fund",
+    "web:dev": "cd web && npm run dev",
+    "web:build": "cd web && npm run build"
+  },
+  "dependencies": {
+    "genlayer-js": "1.1.8"
+  },
+  "devDependencies": {}
+}

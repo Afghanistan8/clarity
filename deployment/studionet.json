@@ -1,0 +1,9 @@
+{
+  "contract": "clarity",
+  "network": "studionet",
+  "chain_id": 61999,
+  "rpc": "https://studio.genlayer.com/api",
+  "address": "0xABefC872823aB9aF8246c3E883529bBa4428bbF5",
+  "tx_id": "0xd4b6bf6d921afc6b7b2c110cbb693a51fb2a20d7a9bcd28cc71a30d3ca784e9d",
+  "deployed_at": "2026-10-19T22:26:51.618Z"
+}
