@@ -1,0 +1,43 @@
+﻿Chain guard OK: studionet (chain id 61999).
+CLI guard OK: network=studionet activeAccount=deployer
+[2026-10-19T23:02:36Z] Contract 0x7c1EbD696BaEd71fD526eF3A4ffA295Baf24b14A on studionet, deployment tx 0x9011a85359123472f895d50da9345420efeedb928438d649b016bfabdf2537cb
+[2026-10-19T23:02:37Z] Evidence page OK (etag=yes, last-modified=null).
+[2026-10-19T23:02:37Z] founder      0x4404919245F3fA1F71D741A5D48ACCAE8B55f06b
+[2026-10-19T23:02:37Z] backerFaith  0xd935b26fcFcdae9c6249c4f984962f7827bF7e9F
+[2026-10-19T23:02:37Z] backerDoubt  0x56BcD69fA10512e4C5732793028b80eD69727C21
+[2026-10-19T23:02:37Z] founder already funded.
+[2026-10-19T23:02:38Z] backerFaith already funded.
+[2026-10-19T23:02:38Z] backerDoubt already funded.
+[2026-10-19T23:02:40Z] Creating vow #1 with a 10 GEN stake (deadline 2026-10-19T23:06:40Z) ...
+[2026-10-19T23:02:40Z]   text: By 2026-10-19T23:06:40Z this live end-to-end test on GenLayer Studionet will be complete: the repository Afghanistan8/clarity contains demo/evidence.md, and that page contains, verbatim, the sentence marked "CLARITY LIVE PROOF" quoted and timestamped below.
+[2026-10-19T23:02:41Z] founder: create_vow -> tx 0x72307854687f6ce9902c3808eff85ba970e8a65848d44f37faf836f49d9abb73
+[2026-10-19T23:02:49Z] Vow #1 OPEN.
+[2026-10-19T23:02:50Z] backerDoubt: back -> tx 0x69f62ac4f9eb8124d0bf0f0b4b1efa345d08719522bb4081c24d3cbc087d2201
+[2026-10-19T23:02:56Z] Doubt backing of 1 GEN recorded (first doubter pays for the possibility of faith).
+[2026-10-19T23:02:58Z] backerFaith: back -> tx 0x1ca94a90e01ebbc5b9240fc4edeed2d411d48a08a18238f2d0be2b6da5d4fb9a
+[2026-10-19T23:03:04Z] Faith backing of 1 GEN recorded (cap satisfied: faith 1 <= doubt 1).
+[2026-10-19T23:03:04Z] Sleeping 222s until the deadline passes ...
+[2026-10-19T23:06:46Z] Calling assess() ΓÇö Studionet validators fetch the page and judge it ...
+[2026-10-19T23:06:49Z] founder: assess -> tx 0x48ae2907e550fec48d317c30f4b3d08a6df63e78b0e0d4077233bdcc87b28aee
+[2026-10-19T23:07:10Z] Provisional FULFILLED ΓÇö evidence:
+[2026-10-19T23:07:11Z]   tier=2 proc=0 status=200 contained=true
+[2026-10-19T23:07:11Z]   quote="CLARITY LIVE PROOF: this sentence is the verbatim evidence quote for the Studionet end-to-end test on 2026-10-19."
+[2026-10-19T23:07:11Z]   page_date="2026-10-19"
+[2026-10-19T23:07:12Z] Dispute window: 15 min remaining; waiting it out ...
+[2026-10-19T23:22:14Z] founder: finalize -> tx 0x16c87f887229c0317430e7be58df3380b38de253de2feb458a4d14a8fbe2639a
+[2026-10-19T23:22:22Z] Vow SETTLED: {"burned":0,"finalized_at":"2026-10-19T23:22:12Z","none":false,"reason":"EVIDENCED","to_doubt":0,"to_faith":"1000000000000000000","to_proposer":"10000000000000000000","verdict":1}
+[2026-10-19T23:22:24Z] founder: claim -> tx 0x4d65fbbff3a68cf18e6e4b1e3a13b29172d7aa41aef184f9b4c067583a144b94
+[2026-10-19T23:22:32Z] backerFaith: claim -> tx 0x1eb1116100097eafc0b7afb7aa404e291f159a395c7864e6e86ff77d0b387a49
+[2026-10-19T23:22:40Z] backerDoubt: claim -> tx 0x0bcac954877f106d35f76478ac17c97576aa34c6baba46b74a092bbb1573a28f
+[2026-10-19T23:22:46Z] claim tx (founder): 0x4d65fbbff3a68cf18e6e4b1e3a13b29172d7aa41aef184f9b4c067583a144b94
+[2026-10-19T23:22:46Z] claim tx (backerFaith): 0x1eb1116100097eafc0b7afb7aa404e291f159a395c7864e6e86ff77d0b387a49
+[2026-10-19T23:22:46Z] claim tx (backerDoubt): 0x0bcac954877f106d35f76478ac17c97576aa34c6baba46b74a092bbb1573a28f
+
+============== LIVE E2E SUMMARY ==============
+contract    : 0x7c1EbD696BaEd71fD526eF3A4ffA295Baf24b14A
+vow         : #1
+verdict     : FULFILLED
+settlement  : {"burned":0,"finalized_at":"2026-10-19T23:22:12Z","none":false,"reason":"EVIDENCED","to_doubt":0,"to_faith":"1000000000000000000","to_proposer":"10000000000000000000","verdict":1}
+accounting  : {"burned_total":0,"dispatched":"12000000000000000000","escrow":"12000000000000000000","outstanding":0,"vow_count":1}
+invariant   : {"burned_total":0,"consistent":true,"dispatched":"12000000000000000000","escrow":"12000000000000000000","outstanding":0,"unfinalized":0}
+full receipts: deployment/live-e2e.json

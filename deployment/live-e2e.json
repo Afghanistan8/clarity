@@ -1,0 +1,163 @@
+{
+  "contract": "0x7c1EbD696BaEd71fD526eF3A4ffA295Baf24b14A",
+  "network": "studionet",
+  "chain_id": 61999,
+  "vow_id": 1,
+  "vow_text": "By 2026-10-19T23:06:40Z this live end-to-end test on GenLayer Studionet will be complete: the repository Afghanistan8/clarity contains demo/evidence.md, and that page contains, verbatim, the sentence marked \"CLARITY LIVE PROOF\" quoted and timestamped below.",
+  "deadline": "2026-10-19T23:06:40Z",
+  "evidence_url": "https://raw.githubusercontent.com/Afghanistan8/clarity/main/demo/evidence.md",
+  "accounts": {
+    "founder": "0x4404919245F3fA1F71D741A5D48ACCAE8B55f06b",
+    "backerFaith": "0xd935b26fcFcdae9c6249c4f984962f7827bF7e9F",
+    "backerDoubt": "0x56BcD69fA10512e4C5732793028b80eD69727C21"
+  },
+  "txs": {
+    "create": "0x72307854687f6ce9902c3808eff85ba970e8a65848d44f37faf836f49d9abb73",
+    "assess": "0x48ae2907e550fec48d317c30f4b3d08a6df63e78b0e0d4077233bdcc87b28aee",
+    "finalize": "0x16c87f887229c0317430e7be58df3380b38de253de2feb458a4d14a8fbe2639a",
+    "claims": {
+      "founder": "0x4d65fbbff3a68cf18e6e4b1e3a13b29172d7aa41aef184f9b4c067583a144b94",
+      "backerFaith": "0x1eb1116100097eafc0b7afb7aa404e291f159a395c7864e6e86ff77d0b387a49",
+      "backerDoubt": "0x0bcac954877f106d35f76478ac17c97576aa34c6baba46b74a092bbb1573a28f"
+    }
+  },
+  "verdict": 1,
+  "verdict_name": "FULFILLED",
+  "views": {
+    "get_vow": {
+      "assessed_at": "2026-10-19T23:06:47Z",
+      "assessed_n": 1,
+      "created_at": "2026-10-19T23:02:39Z",
+      "deadline": "2026-10-19T23:06:40Z",
+      "dispute_deadline": "2026-10-19T23:21:47Z",
+      "dispute_n": 0,
+      "doubt_n": 1,
+      "doubt_total": "1000000000000000000",
+      "evidence_set": true,
+      "evidence_url": "https://raw.githubusercontent.com/Afghanistan8/clarity/main/demo/evidence.md",
+      "faith_n": 1,
+      "faith_total": "1000000000000000000",
+      "id": 1,
+      "proposer": "0x4404919245F3fA1F71D741A5D48ACCAE8B55f06b",
+      "stake": "10000000000000000000",
+      "state": 3,
+      "text": "By 2026-10-19T23:06:40Z this live end-to-end test on GenLayer Studionet will be complete: the repository Afghanistan8/clarity contains demo/evidence.md, and that page contains, verbatim, the sentence marked \"CLARITY LIVE PROOF\" quoted and timestamped below.",
+      "text_sha256": "250d66bed75bf201ce26180d014ce1bf5ddd39b2fb60cc1ac9a170c1f9483ba5"
+    },
+    "get_backings": [
+      {
+        "address": "0x56BcD69fA10512e4C5732793028b80eD69727C21",
+        "amount": "1000000000000000000",
+        "side": "DOUBT"
+      },
+      {
+        "address": "0xd935b26fcFcdae9c6249c4f984962f7827bF7e9F",
+        "amount": "1000000000000000000",
+        "side": "FAITH"
+      }
+    ],
+    "get_evidence": {
+      "assessed_at": "2026-10-19T23:06:47Z",
+      "body_len": 681,
+      "contained": true,
+      "content_sha256": "860318d3b99680297966cc1534a5f0ced6a20c904473bbc0d3ec3905435716bd",
+      "demoted_by_dispute": false,
+      "none": false,
+      "page_date": "2026-10-19",
+      "procedure": 0,
+      "quote": "CLARITY LIVE PROOF: this sentence is the verbatim evidence quote for the Studionet end-to-end test on 2026-10-19.",
+      "status": 200,
+      "text_len": 674,
+      "text_sha256": "684c035459a5620a1625d3be60428753afff9a6b3812e485107e982d2bbcc682",
+      "tier": 2,
+      "url": "https://raw.githubusercontent.com/Afghanistan8/clarity/main/demo/evidence.md"
+    },
+    "get_settlement": {
+      "burned": 0,
+      "finalized_at": "2026-10-19T23:22:12Z",
+      "none": false,
+      "reason": "EVIDENCED",
+      "to_doubt": 0,
+      "to_faith": "1000000000000000000",
+      "to_proposer": "10000000000000000000",
+      "verdict": 1
+    },
+    "get_entitlements": {
+      "founder": {
+        "amount": "10000000000000000000",
+        "claimed": true,
+        "present": true
+      },
+      "backerFaith": {
+        "amount": "2000000000000000000",
+        "claimed": true,
+        "present": true
+      },
+      "backerDoubt": {
+        "amount": 0,
+        "claimed": false,
+        "present": false
+      }
+    },
+    "get_stats": {
+      "burned_total": 0,
+      "dispatched": "12000000000000000000",
+      "escrow": "12000000000000000000",
+      "outstanding": 0,
+      "vow_count": 1
+    },
+    "get_invariant": {
+      "burned_total": 0,
+      "consistent": true,
+      "dispatched": "12000000000000000000",
+      "escrow": "12000000000000000000",
+      "outstanding": 0,
+      "unfinalized": 0
+    },
+    "get_log": [
+      {
+        "code": "VOW_CREATED",
+        "detail": "stake=10000000000000000000",
+        "ts": "2026-10-19T23:02:39Z",
+        "vow": 1
+      },
+      {
+        "code": "VOW_BACKED",
+        "detail": "side=DOUBT,amount=1000000000000000000",
+        "ts": "2026-10-19T23:02:48Z",
+        "vow": 1
+      },
+      {
+        "code": "VOW_BACKED",
+        "detail": "side=FAITH,amount=1000000000000000000",
+        "ts": "2026-10-19T23:02:55Z",
+        "vow": 1
+      },
+      {
+        "code": "ASSESSED",
+        "detail": "verdict=FULFILLED,tier=PERMALINK,proc=OK,reason=EVIDENCED",
+        "ts": "2026-10-19T23:06:47Z",
+        "vow": 1
+      },
+      {
+        "code": "VOW_SETTLED",
+        "detail": "verdict=FULFILLED,burned=0",
+        "ts": "2026-10-19T23:22:12Z",
+        "vow": 1
+      },
+      {
+        "code": "CLAIMED",
+        "detail": "amount=10000000000000000000",
+        "ts": "2026-10-19T23:22:22Z",
+        "vow": 1
+      },
+      {
+        "code": "CLAIMED",
+        "detail": "amount=2000000000000000000",
+        "ts": "2026-10-19T23:22:30Z",
+        "vow": 1
+      }
+    ]
+  },
+  "finished_at": "2026-10-19T23:23:00Z"
+}

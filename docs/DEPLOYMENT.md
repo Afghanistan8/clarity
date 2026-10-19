@@ -23,10 +23,18 @@ Everything in `scripts/` refuses to run against anything other than
 |-----------------|--------------------------------------------------------------------|
 | Contract        | `contracts/clarity.py` (constructor takes no arguments)            |
 | Network         | Studionet (61999)                                                   |
-| Address         | `0xABefC872823aB9aF8246c3E883529bBa4428bbF5`                         |
-| Deploy tx       | `0xd4b6bf6d921afc6b7b2c110cbb693a51fb2a20d7a9bcd28cc71a30d3ca784e9d`|
-| Deployed        | 2026-10-19, by keystore account `deployer` (`0x4184bc…b0df3`)      |
+| Address         | `0x7c1EbD696BaEd71fD526eF3A4ffA295Baf24b14A`                         |
+| Deploy tx       | `0x9011a85359123472f895d50da9345420efeedb928438d649b016bfabdf2537cb`|
+| Deployed        | 2026-10-20, by keystore account `deployer` (`0x4184bc…b0df3`)      |
 | Record          | `deployment/studionet.json`                                         |
+
+Lesson recorded from the first deployment (`0xABefC872…`, tx
+`0xd4b6bf6d…`): `create_vow` and `back` accept `msg.value`, and GenVM
+requires them to be declared with `@gl.public.write.payable` — the
+direct-mode test harness does not check this decorator, so the mismatch only
+appears on a live network ("called non-payable method ... with non-zero
+value"). Any copy of this contract must keep `.payable` on value-bearing
+entry points.
 
 The CLI prints the address & tx hash; `deploy.mjs` parses exactly that
 output, and a live `genlayer call ... get_stats` (successful, `vow_count: 0`)
@@ -86,9 +94,9 @@ repository must be pushed first.
 ## Call / write without the scripts
 
 ```bash
-genlayer call   0xABefC872823aB9aF8246c3E883529bBa4428bbF5 get_constants
-genlayer call   0xABefC872823aB9aF8246c3E883529bBa4428bbF5 get_invariant
-genlayer write  0xABefC872823aB9aF8246c3E883529bBa4428bbF5 <method> [--args ...]
+genlayer call   0x7c1EbD696BaEd71fD526eF3A4ffA295Baf24b14A get_constants
+genlayer call   0x7c1EbD696BaEd71fD526eF3A4ffA295Baf24b14A get_invariant
+genlayer write  0x7c1EbD696BaEd71fD526eF3A4ffA295Baf24b14A <method> [--args ...]
 ```
 
 Note: `genlayer write` cannot attach message value (the CLI hardcodes

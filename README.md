@@ -27,13 +27,14 @@ escrow == unfinalized_pool + outstanding + burned_total + dispatched
 ## Status
 
 - **Contract**: deployed on GenLayer **Studionet** (chain id 61999) at
-  [`0xABefC872823aB9aF8246c3E883529bBa4428bbF5`](https://studio.genlayer.com)
+  [`0x7c1EbD696BaEd71fD526eF3A4ffA295Baf24b14A`](https://studio.genlayer.com)
   — see `deployment/studionet.json` and `docs/DEPLOYMENT.md`.
 - **Tests**: 49 deterministic direct-mode tests exercise real GenVM contract
   semantics (storage, calldata, nondeterministic blocks with captured
   validators). See `docs/TESTING.md`.
 - **End-to-end**: a live run against Studionet with real validators and real
-  GEN is recorded in `docs/END_TO_END.md` + `deployment/live-e2e.json`.
+  GEN is recorded in `docs/END_TO_END.md` + `deployment/live-e2e.json`
+  (verdict **FULFILLED**, invariant `consistent: true`).
 - **Web app**: React + Vite, injected EIP-1193 wallet only, chain-locked to
   Studionet (`web/`).
 

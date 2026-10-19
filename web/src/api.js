@@ -259,7 +259,7 @@ export function classifyEvidenceUrl(raw) {
 const VERDICT_NAMES = { 0: "NONE", 1: "FULFILLED", 2: "BROKEN", 3: "UNCLEAR" };
 const STATE_NAMES = { 1: "OPEN", 2: "PROVISIONAL", 3: "SETTLED", 4: "CANCELLED" };
 const TIER_NAMES = { 0: "NONE", 1: "SNAPSHOT", 2: "PERMALINK", 3: "MUTABLE" };
-const PROC_NAMES = { 0: "NONE", 1: "OK", 2: "BAD_STATUS", 3: "EMPTY_BODY", 4: "EMPTY_TEXT", 5: "UNPARSEABLE" };
+const PROC_NAMES = { 0: "OK", 1: "BAD_STATUS", 2: "UNREACHABLE", 3: "EMPTY_BODY", 4: "EMPTY_TEXT", 5: "UNPARSEABLE" };
 
 export const names = {
   verdict: (v) => VERDICT_NAMES[Number(v)] ?? String(v),

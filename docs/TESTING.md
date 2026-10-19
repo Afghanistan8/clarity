@@ -7,7 +7,7 @@ pip install -r requirements-dev.txt      # pytest + genlayer-test (pinned)
 python -m pytest tests/ -q               # 49 tests, fully offline, deterministic
 ```
 
-Requires Python ≥ 3.12 ( developed on 3.14) and the pinned
+Requires Python ≥ 3.12 (developed on 3.14) and the pinned
 `genlayer-test`/`genlayer-py`. No network, no docker: the direct mode executes
 real GenVM contract semantics in-process — storage, calldata round-trips,
 transaction value + sender, nondeterministic blocks with **captured

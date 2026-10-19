@@ -3,12 +3,12 @@
   "network": "studionet",
   "chain_id": 61999,
   "rpc": "https://studio.genlayer.com/api",
-  "manifest_sha256": "349d498169152ba771c42cb5014e9a973fd976e5d6afd4a7d10949f164ceee19",
+  "manifest_sha256": "5e527d3c60242a7e931d562c6138edb2ec188f3b359e42b45dde1cc12edef33f",
   "files": [
     {
       "path": "contracts/clarity.py",
-      "bytes": 52526,
-      "sha256": "6005c617fd8b08bf8bb10df36421d2e38e7cd147bf53c5753370290266bc112d"
+      "bytes": 52542,
+      "sha256": "1f01a92da724c96edf5d38c33da54d257b4d06845968b263ed6707db406863e9"
     },
     {
       "path": "scripts/common.mjs",
@@ -27,8 +27,8 @@
     },
     {
       "path": "scripts/e2e.mjs",
-      "bytes": 10829,
-      "sha256": "06b895ab233b03c8730832a8299beffc34ac6d6d12ea0b2e225af0e58169d190"
+      "bytes": 11721,
+      "sha256": "3549f069f33a99478eccef162e0882c9382f5d6bc4d55a39c676f275ce4ba881"
     },
     {
       "path": "demo/evidence.md",

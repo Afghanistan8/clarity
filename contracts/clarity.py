@@ -530,7 +530,7 @@ class Clarity(gl.Contract):
     # Vow lifecycle: creation, evidence, early cancel, backing            #
     # ------------------------------------------------------------------ #
 
-    @gl.public.write
+    @gl.public.write.payable
     def create_vow(self, text: str, deadline: str, evidence_url: str) -> u256:
         now = self._now()
         t = text.strip()
@@ -634,7 +634,7 @@ class Clarity(gl.Contract):
         except Exception:
             pass
 
-    @gl.public.write
+    @gl.public.write.payable
     def back(self, vow_id: u256, side: i32) -> None:
         vow = self._get_vow(vow_id)
         if vow.state != STATE_OPEN:

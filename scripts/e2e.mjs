@@ -25,9 +25,12 @@ import {
   readDeployment,
 } from "./common.mjs";
 
-const ts = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
+// ts() renders the current (or provided epoch-seconds) time as ISO 'Z'
+const ts = (epochSec) =>
+  new Date((epochSec ? epochSec * 1000 : Date.now())).toISOString().replace(/\.\d+Z$/, "Z");
 const log = (...a) => console.log(`[${ts()}]`, ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const clipText = (s, n) => (String(s ?? "").length > n ? String(s).slice(0, n) : String(s ?? ""));
 const GEN = 10n ** 18n;
 const SIDE_FAITH = 1;
 const SIDE_DOUBT = 2;
@@ -79,20 +82,30 @@ for (const [n, a] of Object.entries(addrOf)) log(`${n.padEnd(12)} ${a}`);
 const balanceOf = async (addr) =>
   BigInt(await rpc("eth_getBalance", [addr, "latest"]));
 
-for (const [n, need] of [["founder", 12n * GEN], ["backerFaith", 4n * GEN], ["backerDoubt", 4n * GEN]]) {
-  const bal = await balanceOf(addrOf[n]);
-  if (bal >= need) {
-    log(`${n} already funded (${Number(bal / GEN)} GEN).`);
-    continue;
+const fundOnce = async (n, need) => {
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    const bal = await balanceOf(addrOf[n]);
+    if (bal >= need) return true;
+    log(`Funding ${n} (attempt ${attempt}, ${Number(bal / GEN)} -> ${Number(need / GEN)} GEN) from CLI 'deployer' ...`);
+    const r = cli("account", ["send", addrOf[n], `${need}gen`, "--account", "deployer"],
+      { tolerant: true, timeout: 10 * 60_000 });
+    const okMsg = r.output.includes("successfully") || r.output.includes("submitted");
+    if (!okMsg && r.status !== 0) log(`   send output: ${clipText(r.output.split("\n").filter(Boolean).at(-3) ?? "", 120)}`);
+    // Studionet confirms with a queue; poll for the balance to land
+    for (let i = 0; i < 50; i++) {
+      const b = await balanceOf(addrOf[n]);
+      if (b >= need) return true;
+      await sleep(3000);
+    }
+    // retry after a pause (queued transfer txs can lose nonce races)
+    await sleep(15_000 * attempt);
   }
-  log(`Funding ${n} (${Number(bal / GEN)} -> ${Number(need / GEN)} GEN) from CLI 'deployer' ...`);
-  const r = cli("account", ["send", addrOf[n], `${need}gen`, "--account", "deployer"],
-    { tolerant: true, timeout: 10 * 60_000 });
-  const okMsg = r.output.includes("successfully") || r.output.includes("submitted");
-  if (!okMsg && r.status !== 0) die(`Funding ${n} failed:\n${r.output}`);
-  const after = await balanceOf(addrOf[n]);
-  if (after < need) die(`Funding ${n} did not land (balance ${after}).`);
-  log(`${n} funded.`);
+  return false;
+};
+for (const [n, need] of [["founder", 12n * GEN], ["backerFaith", 4n * GEN], ["backerDoubt", 4n * GEN]]) {
+  if (await balanceOf(addrOf[n]) >= need) { log(`${n} already funded.`); continue; }
+  if (!(await fundOnce(n, need))) die(`Funding ${n} did not land after retries.`);
+  log(`${n} funded (balance ${Number(await balanceOf(addrOf[n]) / GEN)} GEN).`);
 }
 
 // ---- 3. client + tx helpers ------------------------------------------- //
@@ -135,7 +148,8 @@ async function read(fn, args = []) {
 
 const stats0 = await read("get_stats", []);
 const vowedId = BigInt(stats0["vow_count"] ?? 0) + 1n;
-const deadline = ts(Math.floor(Date.now() / 1000) + 180);
+// Studionet txs land 10-60 s after signing (queue + consensus); leave 4 min
+const deadline = ts(Math.floor(Date.now() / 1000) + 240);
 const VOW_TEXT =
   `By ${deadline} this live end-to-end test on GenLayer Studionet will be ` +
   `complete: the repository Afghanistan8/clarity contains demo/evidence.md, ` +
@@ -168,7 +182,7 @@ if (msToAdl > 0) log(`Sleeping ${Math.ceil(msToAdl / 1000)}s until the deadline 
 await sleep(Math.max(msToAdl, 0));
 
 log("Calling assess() — Studionet validators fetch the page and judge it ...");
-await write("founder", "assess", [Number(vowedId)]);
+const assess = await write("founder", "assess", [Number(vowedId)]);
 const stProv = await read("get_settlement", [Number(vowedId)]);
 const verdict = Number(stProv["verdict"]);
 log(`Provisional ${VERDICT_NAME[verdict]} — evidence:`);
@@ -189,7 +203,7 @@ if (Number.isNaN(disputeEnd)) {
   log(`Dispute window: ${Math.max(0, Math.ceil(left / 60000))} min remaining; waiting it out ...`);
   await sleep(Math.max(left, 0));
 }
-await write("founder", "finalize", [Number(vowedId)]);
+const fin = await write("founder", "finalize", [Number(vowedId)]);
 log(`Vow SETTLED: ${JSON.stringify(await read("get_settlement", [Number(vowedId)]))}`);
 
 // ---- 8. pull-based claims ---------------------------------------------- //
@@ -239,7 +253,7 @@ const out = {
   deadline,
   evidence_url: SCRIPT_URL,
   accounts: addrOf,
-  txs: { create: created.hash, assess: null, finalize: null, claims: claimHashes },
+  txs: { create: created.hash, assess: assess.hash, finalize: fin.hash, claims: claimHashes },
   verdict,
   verdict_name: VERDICT_NAME[verdict],
   views,
