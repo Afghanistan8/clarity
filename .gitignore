@@ -10,6 +10,7 @@ __pycache__/
 # deployment machine output (records & receipts are committed; the throwaway
 # e2e keys definitely are not)
 deployment/e2e-keys.json
+deployment/frontend-e2e-keys.json
 
 # environment
 .env

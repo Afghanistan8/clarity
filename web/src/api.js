@@ -192,28 +192,45 @@ async function readOnly() {
 
 /** readContract with validation + retries: an RPC hiccup can resolve to
  *  an empty body instead of throwing, which must NEVER be rendered as
- *  state. Empty responses are retried and then surfaced as an error. */
+ *  state. Empty responses are retried and then surfaced as an error.
+ *  RPC is rate-limited server-side (500 req/h per IP) — when that hits,
+ *  do NOT paper over it with extra requests; give the window a wide berth. */
 async function rc(functionName, args = []) {
-  let lastErr;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 1200 * attempt));
+  const waits = [0, 1200, 3000];
+  for (let attempt = 0; attempt < waits.length; attempt++) {
+    if (waits[attempt] > 0) await new Promise((r) => setTimeout(r, waits[attempt]));
     try {
       const out = await (await readOnly()).readContract({
         address: CONTRACT_ADDRESS, functionName, args,
       });
       if (out !== undefined && out !== null) return out;
-      lastErr = new Error(`RPC returned an empty body for ${functionName}`);
+      // treat empty bodies like a failure below
+      throw new Error(`RPC returned an empty body for ${functionName}`);
     } catch (e) {
-      lastErr = e;
+      const msg = String(e?.details ?? e?.message ?? e);
+      const rateLimited = msg.includes("Rate limit") || e?.code === -32029;
+      if (rateLimited || attempt === waits.length - 1) {
+        const err = new Error(
+          rateLimited ? "RPC rate limit reached — retrying soon" : msg || `read ${functionName} failed`,
+        );
+        err.rateLimited = rateLimited;
+        throw err;
+      }
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 /** Opaque bigints / addresses as returned by calldata decoding. */
 export async function readConstants() {
-  return rc("get_constants");
+  // contract constants are compile-time values — they never change, so a
+  // single successful read is cached for the lifetime of the page (this
+  // matters: the RPC caps requests per hour)
+  if (_constantsCache) return _constantsCache;
+  const out = await rc("get_constants");
+  _constantsCache = out;
+  return out;
 }
+let _constantsCache = null;
 
 export async function readStats() {
   return rc("get_stats");
@@ -267,10 +284,12 @@ async function write(address, functionName, args, value = 0n) {
     args,
     value,
   });
-  // best-effort receipt polling; the ledger re-reads state anyway
+  // best-effort receipt polling; the ledger re-reads state anyway.
+  // 10 s cadence: consensus on Studionet takes tens of seconds, and every
+  // poll is one more request from the shared hourly RPC budget.
   let receipt = null;
   try {
-    receipt = await c.waitForTransactionReceipt({ hash, interval: 5_000, retries: 120 });
+    receipt = await c.waitForTransactionReceipt({ hash, interval: 10_000, retries: 90 });
   } catch { /* keep the hash */ }
   return { hash: String(hash), receipt };
 }

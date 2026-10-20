@@ -112,9 +112,11 @@ export default function App() {
       setLedger(Array.isArray(rows) ? rows : Object.values(rows ?? {}));
       setNow(nowTs());
       setLoaded(true);
+      return true;
     } catch (e) {
       console.error(e);
       if (!quiet) flash("Could not read contract state — retrying in the background: " + clip(String(e?.message ?? e)), "err");
+      return false;
     }
   }, [flash]);
 
@@ -124,18 +126,24 @@ export default function App() {
     return () => clearInterval(t);
   }, [refresh]);
 
-  // the Studionet RPC occasionally drops in and out — keep trying quietly
-  // until the first successful load, then refresh on a slow background cadence
+  // the Studionet RPC is capped per hour per IP — never poll wasted:
+  //  - hidden tabs do not refresh at all
+  //  - keep trying until the first successful load, backing off as
+  //    failures stack up (5 s -> 30 s -> 90 s); once loaded, refresh
+  //    slowly (60 s) and only while the tab is visible
   useEffect(() => {
-    if (loaded) return;
-    const t = setInterval(() => refresh(true), 5000);
-    return () => clearInterval(t);
-  }, [loaded, refresh]);
-
-  useEffect(() => {
-    if (!loaded) return;
-    const t = setInterval(() => refresh(true), 45000);
-    return () => clearInterval(t);
+    let fails = 0;
+    let timer = null;
+    const loop = async () => {
+      if (document.visibilityState === "visible") {
+        const ok = await refresh(true);
+        fails = ok ? 0 : Math.min(fails + 1, 6);
+      }
+      const wait = fails === 0 ? (loaded ? 60000 : 5000) : fails <= 2 ? 30000 : 90000;
+      timer = setTimeout(loop, wait);
+    };
+    timer = setTimeout(loop, 4000);
+    return () => clearTimeout(timer);
   }, [loaded, refresh]);
 
   // discover installed wallets once. If the user already granted access to
@@ -214,9 +222,9 @@ export default function App() {
     try {
       const { hash } = await fn(wallet.address);
       flash(`${label} submitted — tx ${String(hash).slice(0, 12)}…`);
-      setTimeout(refresh, 5000);
-      setTimeout(refresh, 15000);
-      setTimeout(refresh, 40000);
+      setTimeout(() => refresh(true), 5000);
+      setTimeout(() => refresh(true), 15000);
+      setTimeout(() => refresh(true), 40000);
       return true;
     } catch (e) {
       flash(`${label}: ${clip(String(e?.message ?? e))}`, "err");
@@ -235,12 +243,14 @@ export default function App() {
     }
   }, [flash]);
 
-  // keep the open drawer fresh
+  // keep the open drawer fresh — every poll costs RPC budget, and the
+  // consensus flow on Studionet takes minutes, so 25 s is plenty
   useEffect(() => {
     if (detailId === null) return;
     const t = setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
       try { setDetail(await loadDetail(detailId)); } catch { /* ignore */ }
-    }, 7000);
+    }, 25000);
     return () => clearInterval(t);
   }, [detailId]);
 
@@ -796,6 +806,12 @@ function Drawer({ d, close, myAddress, wrongNetwork, hasWallet, run, refresh, no
           </div>
         )}
 
+        {/* founder-only controls while the vow is still open */}
+        {state === "OPEN" && !deadlinePassed &&
+          String(vow["proposer"]).toLowerCase() === String(myAddress ?? "").toLowerCase() && (
+          <FounderCard id={id} run={run} />
+        )}
+
         {evidence?.["none"] !== true && state !== "OPEN" && (
           <EvidenceCard evidence={evidence} />
         )}
@@ -903,8 +919,57 @@ function BackWidget({ id, wrongNetwork, run }) {
   );
 }
 
-function EvidenceCard({ evidence }) {
-  const tier = api.names.tier(evidence["tier"]);
+/** Founder-only controls: update the evidence URL or cancel the vow before
+ *  the deadline (full refund to the founder and every backer). */
+function FounderCard({ id, run }) {
+  const [url, setUrl] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const prov = url.trim() ? api.classifyEvidenceUrl(url) : null;
+  return (
+    <div className="card founder-card">
+      <div className="card-title-row">
+        <h3>Founder controls</h3>
+        <Pill kind="dim">only the founder sees this</Pill>
+      </div>
+      <div className="founder-row">
+        <input
+          type="url" value={url} onChange={(e) => setUrl(e.target.value)}
+          placeholder="replace the evidence page before the deadline (optional)"
+        />
+        <button
+          className="btn" disabled={!url.trim() || prov?.tier === "INVALID"}
+          onClick={() => { if (run("set_evidence", (a) => api.txSetEvidence(a, id, url.trim()))) setUrl(""); }}
+        >
+          Update URL
+        </button>
+      </div>
+      {prov?.warn && <small className="muted">{prov.warn}</small>}
+      <div className="founder-cancel">
+        {confirming ? (
+          <>
+            <small>
+              Cancelling refunds every backer and your stake in full, and ends the vow forever.
+              Are you sure?
+            </small>
+            <button className="btn" onClick={() => setConfirming(false)}>No, keep it</button>
+            <button className="btn btn-badsolid" onClick={() => { setConfirming(false); run("early_cancel", (a) => api.txEarlyCancel(a, id)); }}>
+              Yes — cancel the vow
+            </button>
+          </>
+        ) : (
+          <>
+            <small className="muted">Before the deadline you may cancel and refund everyone.</small>
+            <button className="btn btn-danger" onClick={() => setConfirming(true)}>
+              Early cancel…
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EvidenceCard({ evidence }) {  const tier = api.names.tier(evidence["tier"]);
   const proc = api.names.proc(evidence["procedure"]);
   const grounded = evidence["contained"] === true && String(evidence["quote"] ?? "") !== "";
   return (

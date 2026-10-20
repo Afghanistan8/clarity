@@ -186,6 +186,10 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .btn-warnsolid:hover { background: #c2620a; }
 .btn-ghosty { background: transparent; border-color: var(--line-strong); }
 .btn-ghosty:hover { background: rgba(148, 163, 184, 0.08); }
+.btn-danger { background: var(--bad-bg); border-color: rgba(248, 113, 113, 0.45); color: #fda4a4; }
+.btn-danger:hover { background: rgba(248, 113, 113, 0.2); }
+.btn-badsolid { background: #b91c1c; border-color: transparent; color: #fff; font-weight: 600; }
+.btn-badsolid:hover { background: #cf2020; }
 .btn-lg { padding: 12px 24px; font-size: 15px; border-radius: 12px; }
 
 /* ---------------------------------------------------------------- */
@@ -491,6 +495,17 @@ input[type="datetime-local"] { color-scheme: dark; max-width: 260px; }
   box-shadow: 0 0 6px rgba(125, 107, 255, 0.6);
 }
 .tl-code { color: var(--accent-2); font-size: 12px; }
+
+/* founder controls */
+.founder-card { margin: 14px 0; border-style: dashed; }
+.founder-row { display: flex; gap: 10px; align-items: center; }
+.founder-row input { margin: 0; }
+.founder-row .btn { flex: none; }
+.founder-cancel {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 12px;
+}
+.founder-cancel small { flex: 1 1 240px; }
 
 /* ---------------------------------------------------------------- */
 /* footer                                                            */
