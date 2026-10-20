@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "./api.js";
 
 const CHAIN_ID = 61999;
@@ -7,29 +7,42 @@ const CHAIN_ID = 61999;
 // tiny shared bits                                                        //
 // ---------------------------------------------------------------------- //
 
-function Pill({ kind, children }) {
+function Pill({ kind = "dim", children }) {
   return <span className={`pill pill-${kind}`}>{children}</span>;
 }
 
-function Arg({ name, value }) {
-  return (
-    <div className="arg">
-      <span className="arg-name">{name}</span>
-      <span className="arg-value">{value}</span>
-    </div>
-  );
+function StatePill({ state }) {
+  const name = api.names.state(state);
+  const kind = name === "OPEN" ? "ok" : name === "PROVISIONAL" ? "warn"
+    : name === "SETTLED" ? "info" : "dim";
+  return <Pill kind={kind}>{name}</Pill>;
 }
 
-function Section({ title, children, right }) {
+function VerdictPill({ verdict }) {
+  const name = api.names.verdict(verdict);
+  if (!name || name === "NONE") return null;
+  const kind = name === "FULFILLED" ? "ok" : name === "BROKEN" ? "bad" : "info";
+  return <Pill kind={kind}>{name}</Pill>;
+}
+
+function Section({ eyebrow, title, sub, right, children }) {
   return (
     <section className="section">
       <div className="section-head">
-        <h2>{title}</h2>
+        <div>
+          {eyebrow && <div className="eyebrow">{eyebrow}</div>}
+          <h2>{title}</h2>
+          {sub && <p className="section-sub">{sub}</p>}
+        </div>
         {right}
       </div>
       {children}
     </section>
   );
+}
+
+function tile(x) {
+  return String(x ?? "").trim();
 }
 
 function nowTs() {
@@ -48,7 +61,7 @@ async function loadDetail(id) {
     api.readSettlement(Number(id)),
     api.readPreview(Number(id)),
     api.readBackings(Number(id)),
-    api.readLog(60),
+    api.readLog(80),
   ]);
   const asList = (x) => (Array.isArray(x) ? x : Object.values(x ?? {}));
   return {
@@ -76,29 +89,51 @@ export default function App() {
   const [detailId, setDetailId] = useState(null);
   const [txPending, setTxPending] = useState(false);
   const [toast, setToast] = useState(null);
+  const [now, setNow] = useState(nowTs());
+  const [loaded, setLoaded] = useState(false);
 
   const flash = useCallback((msg, kind = "ok") => {
     setToast({ msg, kind });
     setTimeout(() => setToast(null), 7000);
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (quiet = false) => {
     try {
       const [st, inv, cs, rows] = await Promise.all([
         api.readStats(), api.readInvariant(), api.readConstants(),
-        api.readSummaries(16),
+        api.readSummaries(20),
       ]);
       setStats(st);
       setInvariant(inv);
       setConstants(cs);
       setLedger(Array.isArray(rows) ? rows : Object.values(rows ?? {}));
+      setNow(nowTs());
+      setLoaded(true);
     } catch (e) {
       console.error(e);
-      flash("Could not read contract state: " + clip(String(e?.message ?? e)), "err");
+      if (!quiet) flash("Could not read contract state — retrying in the background: " + clip(String(e?.message ?? e)), "err");
     }
   }, [flash]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+    const t = setInterval(() => setNow(nowTs()), 5000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  // the Studionet RPC occasionally drops in and out — keep trying quietly
+  // until the first successful load, then refresh on a slow background cadence
+  useEffect(() => {
+    if (loaded) return;
+    const t = setInterval(() => refresh(true), 5000);
+    return () => clearInterval(t);
+  }, [loaded, refresh]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const t = setInterval(() => refresh(true), 45000);
+    return () => clearInterval(t);
+  }, [loaded, refresh]);
 
   // wallet wiring (EIP-1193 events + a light poll as a fallback)
   useEffect(() => {
@@ -115,7 +150,7 @@ export default function App() {
     window.ethereum.on?.("chainChanged", syncChain);
     api.walletAddresses()
       .then((accs) => { if (accs?.[0]) setWallet({ address: accs[0], wrong: false }); })
-      .catch(() => {});
+      .catch(() => { });
     syncChain();
     const t = setInterval(syncChain, 4000);
     return () => {
@@ -129,7 +164,7 @@ export default function App() {
     try {
       const a = await api.connectWallet();
       setWallet({ address: a, wrong: false });
-      flash("Wallet connected. Chain locked to Studionet (61999).");
+      flash("Wallet connected · chain locked to Studionet");
     } catch (e) {
       if (String(e?.message ?? e).includes("NO_WALLET")) setNoWallet(true);
       else flash("Connect failed: " + clip(String(e?.message ?? e)), "err");
@@ -139,7 +174,7 @@ export default function App() {
   const correctNetwork = async () => {
     try {
       await api.ensureStudionet();
-      flash("Wallet switched to Studionet.");
+      flash("Wallet switched to Studionet");
       setWallet((w) => (w ? { ...w, wrong: false } : w));
     } catch (e) {
       flash("Switch rejected or failed: " + clip(String(e?.message ?? e)), "err");
@@ -150,12 +185,12 @@ export default function App() {
 
   const run = useCallback(async (label, fn) => {
     if (!wallet?.address) { flash("Connect a wallet first.", "err"); return false; }
-    if (wrongNetwork) { flash("Wrong network. Switch to Studionet (61999) first.", "err"); return false; }
+    if (wrongNetwork) { flash("Wrong network — switch to Studionet (61999) first.", "err"); return false; }
     if (txPending) { flash("A transaction is already in flight.", "err"); return false; }
     setTxPending(true);
     try {
       const { hash } = await fn(wallet.address);
-      flash(`${label} submitted — tx ${String(hash).slice(0, 14)}… (finalizes when consensus lands)`);
+      flash(`${label} submitted — tx ${String(hash).slice(0, 12)}…`);
       setTimeout(refresh, 5000);
       setTimeout(refresh, 15000);
       setTimeout(refresh, 40000);
@@ -182,123 +217,260 @@ export default function App() {
     if (detailId === null) return;
     const t = setInterval(async () => {
       try { setDetail(await loadDetail(detailId)); } catch { /* ignore */ }
-    }, 6000);
+    }, 7000);
     return () => clearInterval(t);
   }, [detailId]);
 
-  return (
-    <div className="page">
-      <Header
-        wallet={wallet} noWallet={noWallet} wrongNetwork={wrongNetwork}
-        connect={connect} sw={correctNetwork} stats={stats}
-      />
-      {wallet?.address && wrongNetwork && (
-        <div className="banner banner-warn">
-          Your wallet is on a different chain. Clarity operates <b>only on Studionet (61999)</b>.
-          <button className="btn" onClick={correctNetwork}>Switch to Studionet</button>
-        </div>
-      )}
-      {noWallet && (
-        <div className="banner banner-warn">
-          No injected EIP-1193 wallet detected. Reads work without one; install MetaMask or any
-          EIP-1193 wallet to create, back or claim.
-          <button className="btn" onClick={connect}>Check again</button>
-        </div>
-      )}
-      {toast && <div className={`toast toast-${toast.kind}`}>{toast.msg}</div>}
+  const invOk = invariant?.["consistent"] === true;
+  const invBad = invariant?.["consistent"] === false;   // undefined != violation
 
-      <TrustModel invariant={invariant} constants={constants} />
-      <CreateVow
-        run={run} constants={constants} refresh={refresh} txPending={txPending}
-        wrongNetwork={wrongNetwork} hasWallet={!!wallet?.address}
+  return (
+    <div className="app">
+      <div className="glow glow-a" aria-hidden="true" />
+      <div className="glow glow-b" aria-hidden="true" />
+
+      <TopBar
+        wallet={wallet} noWallet={noWallet} wrongNetwork={wrongNetwork}
+        connect={connect} sw={correctNetwork} stats={stats} invOk={invOk} invBad={invBad}
       />
-      <Ledger ledger={ledger} open={open} refresh={refresh} />
+
+      <main className="container">
+        {wallet?.address && wrongNetwork && (
+          <div className="banner banner-warn">
+            <span><b>Wrong network.</b> Clarity operates only on Studionet (61999) — your wallet is on a different chain.</span>
+            <button className="btn btn-solid" onClick={correctNetwork}>Switch to Studionet</button>
+          </div>
+        )}
+
+        {noWallet && <NoWalletBanner connect={connect} />}
+
+        <Hero invariant={invariant} stats={stats} />
+        <HowItWorks />
+        <ParamsSection constants={constants} />
+        <CreateVow
+          run={run} constants={constants} refresh={refresh} txPending={txPending}
+          wrongNetwork={wrongNetwork} hasWallet={!!wallet?.address}
+        />
+        <VowList ledger={ledger} open={open} refresh={refresh} now={now} />
+      </main>
+
       {txPending && (
         <div className="inflight">
+          <span className="spin" aria-hidden="true" />
           Transaction in flight — the validator panel is working; the ledger refreshes on its own.
         </div>
       )}
 
       {detail && (
         <Drawer
-          d={detail} close={() => { setDetail(null); setDetailId(null); }}
-          myAddress={wallet?.address} wrongNetwork={wrongNetwork} hasWallet={!!wallet?.address}
+          d={detail} now={now}
+          close={() => { setDetail(null); setDetailId(null); }}
+          myAddress={wallet?.address} wrongNetwork={wrongNetwork}
+          hasWallet={!!wallet?.address}
           run={run} refresh={refresh}
         />
       )}
 
+      {toast && <div className={`toast toast-${toast.kind}`}>{toast.msg}</div>}
+
       <footer className="footer">
-        <div>
-          contract <code>{api.CONTRACT_ADDRESS}</code> · chain Studionet (61999) · RPC {api.RPC}
+        <div className="container footer-in">
+          <div className="mono dim">
+            <span className="dot dot-ok" /> contract <a className="link mono" href="https://studio.genlayer.com" target="_blank" rel="noreferrer">{api.shortAddr(api.CONTRACT_ADDRESS)}</a>
+            {" "}· Studionet (61999) · <span className="mono">{api.RPC}</span>
+          </div>
+          <div className="dim">no admin keys · no upgrade path · pull-based claims · fail-closed settlement</div>
         </div>
-        <div>no admin keys · no upgrade path · pull-based claims · fail-closed settlement</div>
       </footer>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------- //
-// header + trust strip                                                    //
+// top bar                                                                 //
 // ---------------------------------------------------------------------- //
 
-function Header({ wallet, noWallet, wrongNetwork, connect, sw, stats }) {
-  const addr = wallet?.address;
+function TopBar({ wallet, noWallet, wrongNetwork, connect, sw, stats, invOk, invBad }) {
   return (
-    <header className="header">
-      <div className="brand">
-        <h1>Clarity</h1>
-        <p>public promises with real stakes — evidence judged by consensus, settled by arithmetic</p>
-      </div>
-      <div className="header-side">
-        <div className="stats-mini">
-          <Arg name="escrow" value={stats ? api.fmtGEN(stats["escrow"]) + " GEN" : "…"} />
-          <Arg name="burned" value={stats ? api.fmtGEN(stats["burned_total"]) + " GEN" : "…"} />
+    <header className="topbar-wrap">
+      <div className="container topbar">
+        <a className="brand" href="#top">
+          <span className="brand-mark" aria-hidden="true">◇</span>
+          <span className="brand-name">Clarity</span>
+        </a>
+        <div className="topbar-right">
+          {invOk && (
+            <span className="chain-chip" title="escrow == unfinalized + outstanding + burned + dispatched">
+              <span className="dot dot-ok" /> invariant consistent
+            </span>
+          )}
+          {invBad && (
+            <span className="chain-chip chain-chip-bad"><span className="dot dot-bad" /> invariant violation</span>
+          )}
+          <span className="chain-chip">Studionet · 61999</span>
+          {wallet?.address && !wrongNetwork && (
+            <button className="walletchip" onClick={sw} title="connected wallet (click to re-check network)">
+              <span className="dot dot-ok" />
+              {api.shortAddr(wallet.address)}
+            </button>
+          )}
+          {wallet?.address && wrongNetwork && (
+            <button className="walletchip walletchip-bad" onClick={sw}>
+              <span className="dot dot-warn" /> wrong network — switch
+            </button>
+          )}
+          {!noWallet && !wallet?.address && (
+            <button className="btn btn-solid" onClick={connect}>Connect wallet</button>
+          )}
+          {noWallet && <span className="chain-chip"><span className="dot dot-warn" /> no wallet — read-only</span>}
         </div>
-        {addr && !wrongNetwork && <Pill kind="ok">{api.shortAddr(addr)}</Pill>}
-        {noWallet && <Pill kind="warn">no wallet</Pill>}
-        {!noWallet && !addr && <button className="btn btn-primary" onClick={connect}>Connect wallet</button>}
-        {addr && wrongNetwork && <button className="btn btn-warn" onClick={sw}>Wrong network</button>}
       </div>
     </header>
   );
 }
 
-function TrustModel({ invariant: inv, constants }) {
+function NoWalletBanner({ connect }) {
   return (
-    <Section title="Trust model">
-      <div className="trust">
-        <div className="card">
-          <h3>How a vow lives and dies</h3>
-          <p><b>1 · Founding.</b> A founder posts a stake against a concrete promise, a deadline, and one evidence URL. The stake is escrowed immediately.</p>
-          <p><b>2 · Backing.</b> Anyone can <b>doubt</b> with GEN; <b>faith</b> can only exist after doubt — faith may never exceed doubt, so hope is always collateralized by scepticism.</p>
-          <p><b>3 · Assessment.</b> After the deadline, consensus validators independently fetch the evidence page and judge it. FULFILLED requires a verbatim quote (&ge; 48 chars) from a snapshot or permalink provenance, dated on or before the deadline — anything else folds to UNCLEAR. Unreadable pages are never a verdict of success (fail-closed).</p>
-          <p><b>4 · Dispute.</b> For 15 minutes, counter-evidence can <b>only demote</b> a verdict (FULFILLED→BROKEN, …→UNCLEAR). Improvements never happen silently.</p>
-          <p><b>5 · Settlement.</b> Deterministic arithmetic: FULFILLED returns the stake and streams the doubter pool to the faithful; BROKEN burns half the stake and pays doubters; UNCLEAR refunds everyone. Proportional shares round down; remainder dust burns. Claims are pull-based; unclaimed funds rest — nothing is swept.</p>
+    <div className="banner banner-info">
+      <span>
+        <b>Read-only mode.</b> You are browsing without a wallet — everything on this page is read straight
+        from the chain. Install MetaMask or any EIP-1193 wallet to create vows, back them or claim payouts.
+      </span>
+      <button className="btn" onClick={connect}>Check again</button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------- //
+// hero                                                                    //
+// ---------------------------------------------------------------------- //
+
+function Hero({ invariant: inv, stats }) {
+  return (
+    <section className="hero" id="top">
+      <h1 className="hero-title">Public promises,<br /><span className="grad">settled by consensus.</span></h1>
+      <p className="hero-sub">
+        Post a stake on a promise. Skeptics back their doubt with GEN — and only when doubt
+        exists may anyone back in faith. After the deadline an independent validator panel
+        fetches the evidence page, and deterministic arithmetic pays out. No oracle to trust,
+        no admin to trust — just the chain and its receipts.
+      </p>
+      <div className="hero-cta">
+        <a className="btn btn-solid btn-lg" href="#create">Make a vow</a>
+        <a className="btn btn-ghosty btn-lg" href="#ledger">Browse the ledger</a>
+      </div>
+      <div className="statgrid">
+        <HeroStat label="value in escrow" value={stats ? api.fmtGEN(stats["escrow"]) : "…"} unit="GEN" />
+        <HeroStat label="already paid out" value={inv ? api.fmtGEN(inv["dispatched"]) : "…"} unit="GEN" />
+        <HeroStat label="publicly burned" value={inv ? api.fmtGEN(inv["burned_total"]) : "…"} unit="GEN" />
+        <HeroStat label="vows created" value={stats ? String(stats["vow_count"]) : "…"} unit="" />
+      </div>
+      {inv && (
+        <div className="invline mono">
+          escrow {api.fmtGEN(inv["escrow"])} = unfinalized {api.fmtGEN(inv["unfinalized"])} + outstanding{" "}
+          {api.fmtGEN(inv["outstanding"])} + burned {api.fmtGEN(inv["burned_total"])} + dispatched{" "}
+          {api.fmtGEN(inv["dispatched"])}
+          {inv["consistent"] === true && <span className="inv-ok"> ✓ consistent</span>}
         </div>
-        <div className="card">
-          <h3>Constraints you can check live</h3>
-          <Arg name="admin & owner keys" value="0 — none exist in the contract" />
-          <Arg name="upgrade path" value="none — closed immutable bytecode" />
-          <Arg name="claims" value="pull-based; contract never moves value except to a caller" />
-          {inv && (
-            <Arg name="accounting invariant" value={inv["consistent"] === true
-              ? "consistent ✓ (escrow = unfinalized + outstanding + burned + dispatched)"
-              : "VIOLATION ✗"}/>
-          )}
-          {inv && <>
-            <Arg name="value held" value={api.fmtGEN(inv["escrow"]) + " GEN"} />
-            <Arg name="awaiting pulls" value={api.fmtGEN(inv["outstanding"]) + " GEN"} />
-            <Arg name="burned publicly" value={api.fmtGEN(inv["burned_total"]) + " GEN"} />
-            <Arg name="already paid out" value={api.fmtGEN(inv["dispatched"]) + " GEN"} />
-          </>}
-          {constants && <>
-            <Arg name="min vow stake" value={api.fmtGEN(constants["min_vow_stake"]) + " GEN"} />
-            <Arg name="min backing" value={api.fmtGEN(constants["min_backing"]) + " GEN"} />
-            <Arg name="quote floor" value={constants["min_quote_len"] + " chars verbatim"} />
-            <Arg name="dispute window" value={constants["dispute_window_sec"] + " seconds"} />
-            <Arg name="assessments per vow" value={String(constants["max_assessments"]) + " (initial + disputes)"} />
-          </>}
+      )}
+    </section>
+  );
+}
+
+function HeroStat({ label, value, unit }) {
+  return (
+    <div className="herostat">
+      <div className="herostat-value">{value}{unit && <small> {unit}</small>}</div>
+      <div className="herostat-label">{label}</div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------- //
+// how it works                                                            //
+// ---------------------------------------------------------------------- //
+
+const STEPS = [
+  {
+    n: "01", title: "Found",
+    body: "A founder stakes ≥ 10 GEN on a concrete promise with a deadline and one evidence URL. The stake is escrowed the moment the tx lands.",
+  },
+  {
+    n: "02", title: "Backed",
+    body: "Anyone doubts with GEN, and only after doubt exists can anyone back in faith — faith may never exceed doubt.",
+  },
+  {
+    n: "03", title: "Judged",
+    body: "After the deadline, consensus validators independently fetch the page and must agree on every material field. A verbatim quote on a snapshot/permalink is required; everything else folds to UNCLEAR.",
+  },
+  {
+    n: "04", title: "Disputed (only downward)",
+    body: "For 15 minutes counter-evidence may demote a verdict (FULFILLED→BROKEN→UNCLEAR). Improvements never happen silently.",
+  },
+  {
+    n: "05", title: "Settled & claimed",
+    body: "FULFILLED pays doubters' pool to the faithful · BROKEN burns half the stake and pays doubters · UNCLEAR refunds everyone. Claims are pull-based; dust burns.",
+  },
+];
+
+function HowItWorks() {
+  return (
+    <Section
+      eyebrow="the mechanics"
+      title="How a vow lives and dies"
+      sub="Five deterministic stages — every one of them auditable on-chain."
+    >
+      <div className="steps">
+        {STEPS.map((s) => (
+          <div className="step" key={s.n}>
+            <div className="step-n mono">{s.n}</div>
+            <div className="step-title">{s.title}</div>
+            <div className="step-body">{s.body}</div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------------- //
+// parameters                                                              //
+// ---------------------------------------------------------------------- //
+
+function ParamsSection({ constants }) {
+  const c = constants;
+  const tiles = c ? [
+    ["10 GEN", "min vow stake"],
+    ["1 GEN", "min backing"],
+    ["48+ chars", "verbatim quote floor"],
+    ["15 min", "dispute window"],
+    ["72 h", "grace before auto-refund"],
+    ["1 + 3", "assessments per vow (initial + disputes)"],
+    ["64", "backers per side"],
+    ["2000", "max promise chars"],
+  ] : null;
+  return (
+    <Section
+      eyebrow="checkable constants"
+      title="The rules, in numbers"
+      sub="Read live from the contract — these bound what anyone, including the founder, can do."
+    >
+      {!tiles && <div className="card muted">loading constants…</div>}
+      {tiles && (
+        <div className="paramgrid">
+          {tiles.map(([v, l]) => (
+            <div className="param" key={l}>
+              <div className="param-v">{v}</div>
+              <div className="param-l">{l}</div>
+            </div>
+          ))}
         </div>
+      )}
+      <div className="rulebar">
+        <div><b>0</b> admin &amp; owner keys</div>
+        <div><b>none</b> — immutable bytecode, no upgrade path</div>
+        <div><b>pull-based</b> — value only ever leaves toward a claimant who calls in</div>
+        <div><b>fail-closed</b> — unreadable evidence can never become a verdict of success</div>
       </div>
     </Section>
   );
@@ -310,103 +482,130 @@ function TrustModel({ invariant: inv, constants }) {
 
 function CreateVow({ run, constants, refresh, txPending, wrongNetwork, hasWallet }) {
   const [text, setText] = useState("");
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("12:00");
+  const [deadlineLocal, setDeadlineLocal] = useState("");
   const [url, setUrl] = useState("");
+  const [touched, setTouched] = useState(false);
 
   const txt = text.trim();
-  const MAX_TEXT = 2000;   // must match the contract's MAX_VOW_TEXT
+  const MAX_TEXT = 2000;                 // must match the contract's MAX_VOW_TEXT
   const MIN_STAKE = 10n * api.GEN;
+
+  // datetime-local (local time) -> UTC ISO "YYYY-MM-DDTHH:MM:SSZ"
+  const deadlineStr = useMemo(() => {
+    if (!deadlineLocal) return "";
+    const d = new Date(deadlineLocal);
+    if (isNaN(+d)) return "";
+    return d.toISOString().slice(0, 19) + "Z";
+  }, [deadlineLocal]);
 
   const prov = (txt.length > 0 && url) ? api.classifyEvidenceUrl(url) : null;
 
   const errors = useMemo(() => {
     const out = [];
-    if (txt.length === 0) out.push("Promise text cannot be empty.");
+    if (txt.length === 0) out.push("The promise cannot be empty.");
     if (txt.length > MAX_TEXT) out.push(`Text is ${txt.length} chars; limit is ${MAX_TEXT}.`);
-    if (!date) out.push("Deadline date is required.");
-    if (date) {
-      const dl = new Date(`${date}T${time}:00Z`);
-      if (isNaN(+dl)) out.push("Deadline is invalid.");
-      else if (dl.getTime() + 5e3 <= Date.now())
-        out.push("Deadline must be at least a few seconds in the future.");
-      else if (dl.getTime() - Date.now() > 366 * 24 * 3600e3)
-        out.push("Deadline is more than a year out.");
+    if (!deadlineLocal) out.push("A deadline is required.");
+    if (deadlineStr) {
+      const dl = Date.parse(deadlineStr);
+      if (isNaN(dl)) out.push("Deadline is invalid.");
+      else if (dl + 5e3 <= Date.now()) out.push("Deadline must be at least a few seconds in the future.");
+      else if (dl - Date.now() > 366 * 24 * 3600e3) out.push("Deadline is more than a year out.");
     }
-    if (url) {
+    if (url && txt.length > 0) {
       const c = api.classifyEvidenceUrl(url);
       if (c.tier === "INVALID") out.push(c.warn);
       else if (c.tier === "MUTABLE") out.push(c.warn);
     }
     return out;
-  }, [txt, date, time, url]);
+  }, [txt, deadlineLocal, deadlineStr, url]);
 
-  const deadlineStr = date ? `${date}T${time}:00Z` : "";
+  const showErrors = touched && errors.length > 0;
 
   const submit = async () => {
+    setTouched(true);
+    if (errors.length > 0) return;
     const ok = await run("create_vow", (a) => api.txCreateVow(a, txt, deadlineStr, url.trim(), MIN_STAKE));
     if (ok) {
-      setText(""); setUrl(""); setDate(""); setTime("12:00");
+      setText(""); setUrl(""); setDeadlineLocal(""); setTouched(false);
       refresh();
     }
   };
 
   return (
-    <Section title="Make a vow">
+    <Section
+      eyebrow="commit"
+      title={<span id="create">Make a vow</span>}
+      sub="Concrete and publicly checkable beats lofty — a vow is settled by its own wording, so write it like a contract."
+      right={constants && (
+        <span className="muted small">min stake 10 GEN · min backing {api.fmtGEN(constants["min_backing"])} GEN</span>
+      )}
+    >
       <div className="card create">
-        <label>Promise (≤ {MAX_TEXT} chars, concrete and publicly checkable)</label>
-        <textarea
-          rows={3} value={text} maxLength={MAX_TEXT + 40}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Example: The community garden will have running water by the deadline — with one fixed page documenting it."
-        />
-        <div className="row">
-          <div>
-            <label>Deadline (UTC)</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        <div className="fld">
+          <div className="fld-head">
+            <label htmlFor="vow-text">Promise</label>
+            <span className={`muted small ${text.length > MAX_TEXT ? "overcount" : ""}`}>{text.length} / {MAX_TEXT}</span>
           </div>
-          <div className="grow">
-            <label>Evidence page (https permalink or archive snapshot)</label>
+          <textarea
+            id="vow-text" rows={3} value={text} maxLength={MAX_TEXT + 40}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="e.g. The community garden will have running water by the deadline — documented on one fixed page."
+          />
+        </div>
+
+        <div className="create-grid">
+          <div className="fld">
+            <div className="fld-head">
+              <label htmlFor="vow-deadline">Deadline</label>
+              <span className="muted small">your local time</span>
+            </div>
             <input
-              type="url" value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://web.archive.org/web/…  or  https://example.org/proof.html"
+              id="vow-deadline" type="datetime-local" value={deadlineLocal}
+              onChange={(e) => setDeadlineLocal(e.target.value)}
             />
-            {prov && (
-              <div className={`prov prov-${prov.tier}`}>
-                <Pill kind={prov.tier === "MUTABLE" || prov.tier === "INVALID" ? "warn" : "ok"}>
-                  provenance: {prov.tier === "MAYBE_PERMALINK" ? "permalink (static text + ETag)" : prov.tier}
-                </Pill>
-                {prov.warn && <small>{prov.warn}</small>}
-              </div>
+            {deadlineStr && !errors.some((x) => x.includes("Deadline")) && (
+              <div className="fld-hint small muted">settles at <span className="mono">{deadlineStr}</span></div>
             )}
           </div>
+
+          <div className="fld">
+            <div className="fld-head">
+              <label htmlFor="vow-url">Evidence page</label>
+              {prov && (
+                <Pill kind={prov.tier === "MUTABLE" || prov.tier === "INVALID" ? "warn" : "ok"}>
+                  {prov.tier === "MAYBE_PERMALINK" ? "permalink (needs static text + ETag)" : prov.tier}
+                </Pill>
+              )}
+            </div>
+            <input
+              id="vow-url" type="url" value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://web.archive.org/web/… or https://example.org/proof.html"
+            />
+            {prov?.warn && <div className="fld-hint small muted">{prov.warn}</div>}
+          </div>
         </div>
 
-        <div className="create-foot">
-          <span>stake <b>10 GEN</b> (minimum) sent with the transaction</span>
-          {constants && (
-            <span className="muted">
-              backing min {api.fmtGEN(constants["min_backing"])} GEN · dispute window {constants["dispute_window_sec"]} s
-            </span>
-          )}
-        </div>
-
-        {errors.length > 0 && (
-          <div className="warn-lines">{errors.map((e) => <div key={e}>{e}</div>)}</div>
+        {showErrors && (
+          <div className="warnbox">
+            {errors.map((e) => <div key={e}>⚠ {e}</div>)}
+          </div>
         )}
 
-        <button className="btn btn-primary btn-big" disabled={txPending} onClick={submit}>
-          {hasWallet
-            ? (wrongNetwork ? "Switch to Studionet first" : "Stake 10 GEN — create vow")
-            : "Connect a wallet"}
-        </button>
-        <p className="muted small">
-          Cancelling before the deadline refunds the founder fully. After the deadline the evidence page is
-          fetched and judged by a panel of independent validators — nobody (including the founder) can
-          bury a promise once its deadline passes.
-        </p>
+        <div className="create-foot">
+          <button
+            className="btn btn-solid btn-lg" disabled={txPending} onClick={submit}
+          >
+            {hasWallet
+              ? (wrongNetwork ? "Switch to Studionet first" : txPending ? "Waiting for signature…" : "Stake 10 GEN — create vow")
+              : "Connect a wallet to create"}
+          </button>
+          <p className="muted small">
+            Cancelling before the deadline refunds the founder fully. After the deadline the evidence page is
+            fetched and judged by independent validators — nobody (including the founder) can bury a promise
+            once its deadline has passed.
+          </p>
+        </div>
       </div>
     </Section>
   );
@@ -416,33 +615,42 @@ function CreateVow({ run, constants, refresh, txPending, wrongNetwork, hasWallet
 // ledger                                                                  //
 // ---------------------------------------------------------------------- //
 
-function Ledger({ ledger, open, refresh }) {
+function VowList({ ledger, open, refresh, now }) {
   return (
-    <Section title="Ledger" right={<button className="btn" onClick={refresh}>refresh</button>}>
-      {ledger.length === 0 && <p className="muted">No vows yet — be the first to stake.</p>}
+    <Section
+      eyebrow="the chain itself"
+      title={<span id="ledger">Ledger</span>}
+      sub="Every vow ever staked — state read straight from the contract."
+      right={<button className="btn" onClick={refresh}>refresh</button>}
+    >
+      {ledger.length === 0 && (
+        <div className="card empty">
+          <div className="empty-mark">◇</div>
+          <p>No vows yet. The ledger only records what the chain has seen — be the first to stake a promise.</p>
+        </div>
+      )}
       <div className="ledger">
-        {ledger.map((row) => <LedgerRow key={String(row["id"])} row={row} open={open} />)}
+        {ledger.map((row) => <VowCard key={String(row["id"])} row={row} open={open} now={now} />)}
       </div>
     </Section>
   );
 }
 
-function LedgerRow({ row, open }) {
-  const state = api.names.state(row["state"]);
+function VowCard({ row, open, now }) {
   return (
-    <button className="row" onClick={() => open(row["id"])}>
-      <div className="row-top">
-        <span className="vow-id">#{String(row["id"])}</span>
-        <span className="vow-text">{clip(row["text_head"], 116)}</span>
-        <div className="row-pills">
-          <Pill kind={state === "OPEN" ? "ok" : state === "PROVISIONAL" ? "warn"
-            : state === "SETTLED" ? "info" : "dim"}>{state}</Pill>
-        </div>
+    <button className="vowcard" onClick={() => open(row["id"])}>
+      <div className="vowcard-head">
+        <span className="vow-id mono">#{String(row["id"])}</span>
+        <StatePill state={row["state"]} />
+        <span className="vowcard-spacer" />
+        <span className="muted small">{api.tsFormat(row["deadline"])}</span>
       </div>
-      <div className="row-bottom">
-        <span>deadline {api.tsFormat(row["deadline"])}</span>
-        <span>stake {api.fmtGEN(row["stake"])} GEN</span>
-        <span>faith {api.fmtGEN(row["faith_total"])} GEN · doubt {api.fmtGEN(row["doubt_total"])} GEN</span>
+      <div className="vowcard-text">{clip(row["text_head"], 150)}</div>
+      <div className="vowcard-meta">
+        <span><b>{api.fmtGEN(row["stake"])}</b> stake</span>
+        <span><b>{api.fmtGEN(row["faith_total"])}</b> faith</span>
+        <span><b>{api.fmtGEN(row["doubt_total"])}</b> doubt</span>
+        {String(row["deadline"]) < now && <span className="meta-due">deadline passed</span>}
       </div>
     </button>
   );
@@ -452,13 +660,16 @@ function LedgerRow({ row, open }) {
 // detail drawer                                                           //
 // ---------------------------------------------------------------------- //
 
-function Drawer({ d, close, myAddress, wrongNetwork, run, refresh }) {
+function Drawer({ d, close, myAddress, wrongNetwork, hasWallet, run, refresh, now }) {
   const { vow, evidence, settlement, preview, backings, log } = d;
   const id = Number(vow["id"]);
   const state = api.names.state(vow["state"]);
   const verdict = settlement?.["none"] ? null : api.names.verdict(settlement["verdict"]);
   const [mine, setMine] = useState(null);
   const [claimRunning, setClaimRunning] = useState(false);
+  const scrollRef = useRef(null);
+
+  useEffect(() => { scrollRef.current?.scrollTo?.(0, 0); }, [id]);
 
   useEffect(() => {
     let alive = true;
@@ -470,110 +681,122 @@ function Drawer({ d, close, myAddress, wrongNetwork, run, refresh }) {
       } catch { /* ignore */ }
     };
     pull();
-    const t = setInterval(pull, 8000);
-    return () => { alive = false; clearInterval(t); };
+    return () => { alive = false; };
   }, [id, myAddress]);
+
+  const deadlinePassed = String(vow["deadline"]) < now;
+  const windowOpen = state === "PROVISIONAL" && String(vow["dispute_deadline"]) > now;
 
   return (
     <div className="drawer-back" onClick={close}>
-      <div className="drawer" onClick={(e) => e.stopPropagation()}>
+      <div className="drawer" onClick={(e) => e.stopPropagation()} ref={scrollRef}>
+        <button className="drawer-x" onClick={close} aria-label="close">✕</button>
+
         <div className="drawer-head">
-          <span className="vow-id">vow #{id}</span>
-          <Pill kind={state === "OPEN" ? "ok" : state === "PROVISIONAL" ? "warn"
-            : state === "SETTLED" ? "info" : "dim"}>{state}</Pill>
-          {verdict && verdict !== "NONE" && (
-            <Pill kind={verdict === "FULFILLED" ? "ok" : verdict === "BROKEN" ? "bad" : "dim"}>{verdict}</Pill>
-          )}
-          <button className="btn btn-ghost" onClick={close}>close</button>
+          <span className="drawer-id mono">vow #{id}</span>
+          <StatePill state={vow["state"]} />
+          <VerdictPill verdict={settlement?.["none"] ? 0 : settlement["verdict"]} />
         </div>
 
-        <blockquote className="vow-text-full">{String(vow["text"])}</blockquote>
-        <div className="grid2">
-          <Arg name="founder" value={api.shortAddr(String(vow["proposer"]))} />
-          <Arg name="stake" value={api.fmtGEN(vow["stake"]) + " GEN"} />
-          <Arg name="deadline" value={api.tsFormat(vow["deadline"])} />
-          <Arg name="created" value={api.tsFormat(vow["created_at"])} />
-          <Arg name="faith pool" value={api.fmtGEN(vow["faith_total"]) + " GEN"} />
-          <Arg name="doubt pool" value={api.fmtGEN(vow["doubt_total"]) + " GEN"} />
-          <Arg name="evidence page" value={
-            <a href={String(vow["evidence_url"])} target="_blank" rel="noreferrer">
-              {clip(String(vow["evidence_url"]), 46)}
-            </a>} />
-          <Arg name="assessments" value={`${Number(vow["assessed_n"])} · disputes used ${Number(vow["dispute_n"])}`} />
+        <blockquote className="vow-quote">{String(vow["text"])}</blockquote>
+
+        <div className="kvgrid">
+          <KV k="founder" v={api.shortAddr(String(vow["proposer"]))} />
+          <KV k="stake" v={api.fmtGEN(vow["stake"]) + " GEN"} />
+          <KV k="deadline" v={api.tsFormat(vow["deadline"])} />
+          <KV k="created" v={api.tsFormat(vow["created_at"])} />
+          <KV k="faith pool" v={api.fmtGEN(vow["faith_total"]) + " GEN"} />
+          <KV k="doubt pool" v={api.fmtGEN(vow["doubt_total"]) + " GEN"} />
+          <KV k="evidence" v={<a className="link" href={String(vow["evidence_url"])} target="_blank" rel="noreferrer">{clip(String(vow["evidence_url"]), 40)}</a>} />
+          <KV k="assessments" v={`${Number(vow["assessed_n"])} · disputes used ${Number(vow["dispute_n"])}`} />
         </div>
 
-        {state === "OPEN" && (
+        {/* actions, in lifecycle order */}
+        {state === "OPEN" && !deadlinePassed && (
           <BackWidget id={id} wrongNetwork={wrongNetwork} run={run} />
         )}
-
-        {state === "OPEN" && String(vow["deadline"]) < nowTs() && (
-          <div className="actions">
-            <button className="btn btn-primary" onClick={() => run("assess", (a) => api.txAssess(a, id))}>
-              Deadline passed — fetch the page and let the panel judge
+        {state === "OPEN" && deadlinePassed && (
+          <div className="actionbar">
+            <button className="btn btn-solid" onClick={() => run("assess", (a) => api.txAssess(a, id))}>
+              Deadline passed — let the panel judge
             </button>
+            <small className="muted">Anybody can trigger the assessment; the validators do the rest.</small>
           </div>
         )}
 
-        {evidence?.["none"] !== true && state !== "OPEN" && <EvidenceBar evidence={evidence} />}
+        {evidence?.["none"] !== true && state !== "OPEN" && (
+          <EvidenceCard evidence={evidence} />
+        )}
 
         {settlement?.["none"] !== true && (
-          <SettlementView settlement={settlement} preview={preview} provisional={state === "PROVISIONAL"} />
+          <SettlementCard settlement={settlement} preview={preview} provisional={state === "PROVISIONAL"} />
         )}
 
-        {state === "PROVISIONAL" && String(vow["dispute_deadline"]) > nowTs() && (
-          <div className="actions">
-            <button className="btn btn-warn" onClick={() => run("dispute", (a) => api.txDispute(a, id))}>
-              Dispute with counter-evidence (window until {api.tsFormat(vow["dispute_deadline"])})
+        {windowOpen && (
+          <div className="actionbar">
+            <button className="btn btn-warnsolid" onClick={() => run("dispute", (a) => api.txDispute(a, id))}>
+              Dispute with counter-evidence
             </button>
-            <small className="muted">A dispute re-runs the whole panel assessment. It can only demote the current verdict.</small>
+            <small className="muted">window until {api.tsFormat(vow["dispute_deadline"])} — a fresh panel run that can only demote the verdict.</small>
+          </div>
+        )}
+        {state === "PROVISIONAL" && !windowOpen && (
+          <div className="actionbar">
+            <button className="btn btn-solid" onClick={() => run("finalize", (a) => api.txFinalize(a, id))}>
+              Dispute window closed — finalize
+            </button>
           </div>
         )}
 
-        {state === "PROVISIONAL" && String(vow["dispute_deadline"]) <= nowTs() && (
-          <div className="actions">
-            <button className="btn btn-primary" onClick={() => run("finalize", (a) => api.txFinalize(a, id))}>
-              Dispute window closed — finalize the verdict
-            </button>
+        {state === "SETTLED" && hasWallet && (
+          <ClaimCard mine={mine} claimRunning={claimRunning} onClaim={async () => {
+            setClaimRunning(true);
+            const ok = await run("claim", (a) => api.txClaim(a, id));
+            setClaimRunning(false);
+            if (ok) refresh();
+          }} />
+        )}
+
+        <div className="drawer-sec">
+          <h3>Backings</h3>
+          {backings.length === 0 && <p className="muted">no backings yet</p>}
+          <div className="backings">
+            {backings.map((b) => (
+              <div key={String(b["address"])} className="backing">
+                <Pill kind={b["side"] === "FAITH" ? "ok" : "warn"}>{String(b["side"])}</Pill>
+                <span className="mono">{api.shortAddr(String(b["address"]))}</span>
+                <span className="backing-amt">{api.fmtGEN(b["amount"])} GEN</span>
+              </div>
+            ))}
           </div>
-        )}
-
-        {state === "SETTLED" && myAddress && (
-          <ClaimWidget
-            mine={mine}
-            claimRunning={claimRunning}
-            onClaim={async () => {
-              setClaimRunning(true);
-              const ok = await run("claim", (a) => api.txClaim(a, id));
-              setClaimRunning(false);
-              if (ok) refresh();
-            }}
-          />
-        )}
-
-        <h3>Backings</h3>
-        <div className="backings">
-          {backings.length === 0 && <p className="muted">no backings</p>}
-          {backings.map((b) => (
-            <div key={String(b["address"])} className="backing">
-              <Pill kind={b["side"] === "FAITH" ? "ok" : "warn"}>{String(b["side"])}</Pill>
-              <span className="mono">{api.shortAddr(String(b["address"]))}</span>
-              <span>{api.fmtGEN(b["amount"])} GEN</span>
-            </div>
-          ))}
         </div>
 
-        <h3>Receipts (on-chain audit log)</h3>
-        <div className="receipts">
+        <div className="drawer-sec">
+          <h3>Receipts</h3>
+          <p className="muted small">the on-chain audit log — authoritative public history</p>
           {log.length === 0 && <p className="muted">no entries</p>}
-          {log.slice().reverse().map((l, i) => (
-            <div key={i} className="logline">
-              <span className="mono muted">{api.tsFormat(l["ts"])}</span>
-              <b>{String(l["code"])}</b>
-              <span className="muted">{String(l["detail"])}</span>
-            </div>
-          ))}
+          <div className="timeline">
+            {log.slice().reverse().map((l, i) => (
+              <div key={i} className="tl-row">
+                <span className="tl-dot" />
+                <div>
+                  <div><b className="mono tl-code">{String(l["code"])}</b> <span className="muted small">{api.tsFormat(l["ts"])}</span></div>
+                  <div className="muted">{String(l["detail"])}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function KV({ k, v }) {
+  return (
+    <div className="kv">
+      <div className="kv-k">{k}</div>
+      <div className="kv-v">{v}</div>
     </div>
   );
 }
@@ -582,53 +805,57 @@ function BackWidget({ id, wrongNetwork, run }) {
   const [side, setSide] = useState(null);
   const [amt, setAmt] = useState(1);
   return (
-    <div className="actions back-widget">
-      <button className={`btn ${side === 2 ? "btn-warn" : ""}`} onClick={() => setSide(2)}>
-        {side === 2 ? "✓ " : ""}DOUBT
-      </button>
-      <button className={`btn ${side === 1 ? "btn-ok" : ""}`} onClick={() => setSide(1)}>
-        {side === 1 ? "✓ " : ""}FAITH
-      </button>
-      <input type="number" min={1} value={amt} onChange={(e) => setAmt(Number(e.target.value))} /> GEN
-      <button
-        className="btn btn-primary"
-        disabled={!side || amt < 1 || wrongNetwork}
-        onClick={() => run("back", (a) => api.txBack(a, id, side, BigInt(amt) * api.GEN))}
-      >
-        Commit {amt} GEN
-      </button>
-      <small className="muted">
-        Doubt wins on BROKEN (and shares in refunds). Faith wins only on FULFILLED — and only if the
-        page carries a decisive quote. The contract caps faith at the doubt total.
-      </small>
+    <div className="card act-back">
+      <h3>Back this vow</h3>
+      <div className="back-choose">
+        <button className={`sidebtn side-doubt ${side === 2 ? "on" : ""}`} onClick={() => setSide(2)}>
+          <b>DOUBT</b><span>win when BROKEN · share refunds on UNCLEAR</span>
+        </button>
+        <button className={`sidebtn side-faith ${side === 1 ? "on" : ""}`} onClick={() => setSide(1)}>
+          <b>FAITH</b><span>win when FULFILLED — only a quoted page pays</span>
+        </button>
+      </div>
+      <div className="back-amt">
+        <label htmlFor="back-amt">commit</label>
+        <input id="back-amt" type="number" min={1} value={amt} onChange={(e) => setAmt(Number(e.target.value))} />
+        <span className="muted">GEN (min 1)</span>
+        <button
+          className="btn btn-solid" disabled={!side || amt < 1 || wrongNetwork}
+          onClick={() => run("back", (a) => api.txBack(a, id, side, BigInt(amt) * api.GEN))}
+        >
+          Commit {amt} GEN
+        </button>
+      </div>
+      <small className="muted">One backing per address per vow. The contract caps faith at the current doubt total — the first skeptic enables hope.</small>
     </div>
   );
 }
 
-function EvidenceBar({ evidence }) {
+function EvidenceCard({ evidence }) {
   const tier = api.names.tier(evidence["tier"]);
   const proc = api.names.proc(evidence["procedure"]);
   const grounded = evidence["contained"] === true && String(evidence["quote"] ?? "") !== "";
   return (
-    <div className="card evidence">
-      <h3>Evidence (fetched and judged by the validator panel)</h3>
-      <div className="grid2">
-        <Arg name="page" value={
-          <a href={String(evidence["url"])} target="_blank" rel="noreferrer">
-            {clip(String(evidence["url"]), 44)}
-          </a>} />
-        <Arg name="http status" value={String(evidence["status"])} />
-        <Arg name="procedure" value={proc} />
-        <Arg name="provenance" value={tier} />
-        <Arg name="fetched at" value={api.tsFormat(evidence["assessed_at"])} />
-        <Arg name="page date" value={String(evidence["page_date"] ?? "") || "—"} />
-        <Arg name="body sha256" value={<code className="mono">{clip(evidence["content_sha256"], 20)}</code>} />
-        <Arg name="text sha256" value={<code className="mono">{clip(evidence["text_sha256"], 20)}</code>} />
+    <div className="card ev-card">
+      <div className="card-title-row">
+        <h3>Evidence</h3>
+        <Pill kind={grounded ? "ok" : "warn"}>{grounded ? "grounded ✓" : "not grounded"}</Pill>
+      </div>
+      <div className="kvgrid kvgrid-3">
+        <KV k="fetched" v={api.tsFormat(evidence["assessed_at"])} />
+        <KV k="http status" v={String(evidence["status"])} />
+        <KV k="procedure" v={proc} />
+        <KV k="provenance" v={tier} />
+        <KV k="page date" v={String(evidence["page_date"] ?? "") || "—"} />
+        <KV k="text length" v={String(evidence["text_len"] ?? "") + " chars"} />
+        <KV k="body sha256" v={<code className="mono tiny">{clip(evidence["content_sha256"], 16)}</code>} />
+        <KV k="text sha256" v={<code className="mono tiny">{clip(evidence["text_sha256"], 16)}</code>} />
+        <KV k="page" v={<a className="link" href={String(evidence["url"])} target="_blank" rel="noreferrer">open ↗</a>} />
       </div>
       {grounded ? (
-        <blockquote>"{String(evidence["quote"])}"<span className="muted"> — verbatim on page ✓</span></blockquote>
+        <blockquote className="ev-quote">“{String(evidence["quote"])}”<span className="muted small"> — verbatim on page ✓</span></blockquote>
       ) : (
-        <p className="muted">
+        <p className="muted small">
           No quote is anchored here: procedural failure ({proc}) or an ungrounded judgment — recorded
           as-is, never laundered into success.
         </p>
@@ -637,46 +864,63 @@ function EvidenceBar({ evidence }) {
   );
 }
 
-function SettlementView({ settlement, preview, provisional }) {
-  const rows = [
-    ["verdict", api.names.verdict(settlement["verdict"])],
-    ["decided by", String(settlement["reason"])],
-    ["public burn", api.fmtGEN(settlement["burned"]) + " GEN"],
-    ["to founder", api.fmtGEN(settlement["to_proposer"]) + " GEN"],
-    ["faith pool", api.fmtGEN(settlement["to_faith"]) + " GEN"],
-    ["doubt pool", api.fmtGEN(settlement["to_doubt"]) + " GEN"],
-    ["finalized at", api.tsFormat(settlement["finalized_at"])],
+function SettlementCard({ settlement, preview, provisional }) {
+  const name = api.names.verdict(settlement["verdict"]);
+  const verdictKind = name === "FULFILLED" ? "ok" : name === "BROKEN" ? "bad" : "info";
+  const outcome = {
+    FULFILLED: "The promise was proven on the evidence page. Stake returned; the doubter pool streams to the faithful.",
+    BROKEN: "The failure was proven. Half the stake burns publicly; the rest plus forfeited faith goes to doubters.",
+    UNCLEAR: "Not provable, unreadable, or disputed into ambiguity. Everyone is refunded in full.",
+  }[name];
+  const tiles = [
+    ["founder", settlement["to_proposer"]],
+    ["faith pool", settlement["to_faith"]],
+    ["doubt pool", settlement["to_doubt"]],
+    ["public burn", settlement["burned"]],
   ];
   return (
-    <div className="card settle">
-      <h3>Settlement {provisional ? "(provisional)" : ""}</h3>
-      {rows.map(([k, v]) => <Arg key={k} name={k} value={v} />)}
+    <div className="card settle-card">
+      <div className="card-title-row">
+        <h3>Settlement {provisional && <Pill kind="warn">provisional</Pill>}</h3>
+        <Pill kind={verdictKind}>{name}</Pill>
+      </div>
+      <p className="settle-why muted">{String(settlement["reason"])} — {outcome}</p>
+      <div className="settle-grid">
+        {tiles.map(([k, v]) => (
+          <div className="settle-tile" key={k}>
+            <div className="settle-amt">{api.fmtGEN(v)}</div>
+            <div className="settle-lbl">{k}</div>
+          </div>
+        ))}
+      </div>
       {provisional && preview?.["none"] !== true && (
-        <p className="muted small">
-          final preview: {api.names.verdict(preview["verdict"])}, burn {api.fmtGEN(preview["burned"])} GEN,
-          total entitlement {api.fmtGEN(preview["entitlement_total"])} GEN
+        <p className="muted small settle-preview">
+          deterministic preview of finalization: {api.names.verdict(preview["verdict"])}, burn{" "}
+          {api.fmtGEN(preview["burned"])} GEN, total entitlement {api.fmtGEN(preview["entitlement_total"])} GEN
         </p>
       )}
     </div>
   );
 }
 
-function ClaimWidget({ mine, claimRunning, onClaim }) {
-  if (!mine) {
-    return <div className="card"><p className="muted">checking your entitlements…</p></div>;
-  }
-  if (mine["present"] !== true) {
-    return <div className="card"><p className="muted">Nothing is owed to you for this vow.</p></div>;
-  }
-  if (mine["claimed"] === true) {
-    return <div className="card"><p>Your payout is claimed ✓</p></div>;
-  }
+function ClaimCard({ mine, claimRunning, onClaim }) {
   return (
-    <div className="card claim">
-      <b>{api.fmtGEN(mine["amount"])} GEN</b> is waiting for you.
-      <button className="btn btn-primary" onClick={onClaim} disabled={claimRunning}>
-        {claimRunning ? "claiming…" : "Claim payout (pull-based)"}
-      </button>
+    <div className="card claim-card">
+      {mine === null && <p className="muted">checking your entitlements…</p>}
+      {mine && mine["present"] !== true && (
+        <p className="muted">Nothing is owed to this address for this vow {mine["none"] === true ? "yet" : ""}.</p>
+      )}
+      {mine && mine["present"] === true && mine["claimed"] === true && (
+        <p><span className="dot dot-ok" /> You claimed your payout.</p>
+      )}
+      {mine && mine["present"] === true && mine["claimed"] !== true && (
+        <div className="claim-row">
+          <span><b>{api.fmtGEN(mine["amount"])} GEN</b> waiting for you</span>
+          <button className="btn btn-solid" onClick={onClaim} disabled={claimRunning}>
+            {claimRunning ? "claiming…" : "Claim payout"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

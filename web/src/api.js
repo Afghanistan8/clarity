@@ -14,8 +14,10 @@ export const RPC = "https://studio.genlayer.com/api";
 export const CHAIN_ID = 61999;
 
 /** Contract address is baked at build/deploy time; falls back to the
- *  local deployment record file placed under src/contract-address.js. */
+ *  local deployment record file placed under src/contract-address.js.
+ *  Re-exported so callers can reference api.CONTRACT_ADDRESS. */
 import { CONTRACT_ADDRESS } from "./contract-address.js";
+export { CONTRACT_ADDRESS };
 
 export const GEN = 10n ** 18n;
 
@@ -94,73 +96,69 @@ async function readOnly() {
   return client(undefined);
 }
 
+/** readContract with validation + retries: an RPC hiccup can resolve to
+ *  an empty body instead of throwing, which must NEVER be rendered as
+ *  state. Empty responses are retried and then surfaced as an error. */
+async function rc(functionName, args = []) {
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1200 * attempt));
+    try {
+      const out = await (await readOnly()).readContract({
+        address: CONTRACT_ADDRESS, functionName, args,
+      });
+      if (out !== undefined && out !== null) return out;
+      lastErr = new Error(`RPC returned an empty body for ${functionName}`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 /** Opaque bigints / addresses as returned by calldata decoding. */
 export async function readConstants() {
-  return (await readOnly()).readContract({
-    address: CONTRACT_ADDRESS, functionName: "get_constants", args: [],
-  });
+  return rc("get_constants");
 }
 
 export async function readStats() {
-  return (await readOnly()).readContract({
-    address: CONTRACT_ADDRESS, functionName: "get_stats", args: [],
-  });
+  return rc("get_stats");
 }
 
 export async function readInvariant() {
-  return (await readOnly()).readContract({
-    address: CONTRACT_ADDRESS, functionName: "get_invariant", args: [],
-  });
+  return rc("get_invariant");
 }
 
 export async function readSummaries(limit = 20) {
-  return (await readOnly()).readContract({
-    address: CONTRACT_ADDRESS, functionName: "get_vow_summaries",
-    args: [Number(limit)],
-  });
+  return rc("get_vow_summaries", [Number(limit)]);
 }
 
 export async function readVow(id) {
-  return (await readOnly()).readContract({
-    address: CONTRACT_ADDRESS, functionName: "get_vow", args: [Number(id)],
-  });
+  return rc("get_vow", [Number(id)]);
 }
 
 export async function readEvidence(id) {
-  return (await readOnly()).readContract({
-    address: CONTRACT_ADDRESS, functionName: "get_evidence", args: [Number(id)],
-  });
+  return rc("get_evidence", [Number(id)]);
 }
 
 export async function readSettlement(id) {
-  return (await readOnly()).readContract({
-    address: CONTRACT_ADDRESS, functionName: "get_settlement", args: [Number(id)],
-  });
+  return rc("get_settlement", [Number(id)]);
 }
 
 export async function readPreview(id) {
-  return (await readOnly()).readContract({
-    address: CONTRACT_ADDRESS, functionName: "get_settlement_preview", args: [Number(id)],
-  });
+  return rc("get_settlement_preview", [Number(id)]);
 }
 
 export async function readBackings(id) {
-  return (await readOnly()).readContract({
-    address: CONTRACT_ADDRESS, functionName: "get_backings", args: [Number(id)],
-  });
+  return rc("get_backings", [Number(id)]);
 }
 
 export async function readLog(lastN = 40) {
-  return (await readOnly()).readContract({
-    address: CONTRACT_ADDRESS, functionName: "get_log", args: [Number(lastN)],
-  });
+  return rc("get_log", [Number(lastN)]);
 }
 
 export async function readEntitlement(id, who) {
-  return (await readOnly()).readContract({
-    address: CONTRACT_ADDRESS, functionName: "get_entitlement",
-    args: [Number(id), who],
-  });
+  return rc("get_entitlement", [Number(id), who]);
 }
 
 // ------------------------------------------------------------------ //
@@ -287,5 +285,10 @@ export function shortAddr(a) {
 
 export function tsFormat(s) {
   const t = String(s ?? "");
-  return t === "" ? "—" : t.replace("T", " ").replace("Z", " UTC");
+  if (t === "") return "—";
+  const d = new Date(t);
+  if (isNaN(+d)) return t;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${months[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()} · ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
 }
