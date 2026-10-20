@@ -9,8 +9,22 @@
 
 import { createClient, chains } from "genlayer-js";
 
-export const CHAIN = chains.studionet;
-export const RPC = "https://studio.genlayer.com/api";
+// Optional same-origin RPC override for local testing (set by the e2e
+// harness). When absent, everything talks to Studionet exactly as shipped.
+const RPC_OVERRIDE =
+  (typeof localStorage !== "undefined" && localStorage.getItem("clarity.rpc")) || "";
+
+/** Studionet-only. Override URL is used verbatim when present. */
+export const CHAIN = (() => {
+  const base = chains.studionet;
+  if (!RPC_OVERRIDE) return base;
+  const urls = base.rpcUrls ?? {};
+  return {
+    ...base,
+    rpcUrls: { ...urls, default: { ...(urls.default ?? {}), http: [RPC_OVERRIDE] } },
+  };
+})();
+export const RPC = RPC_OVERRIDE || "https://studio.genlayer.com/api";
 export const CHAIN_ID = 61999;
 
 /** Contract address is baked at build/deploy time; falls back to the
@@ -285,11 +299,11 @@ async function write(address, functionName, args, value = 0n) {
     value,
   });
   // best-effort receipt polling; the ledger re-reads state anyway.
-  // 10 s cadence: consensus on Studionet takes tens of seconds, and every
-  // poll is one more request from the shared hourly RPC budget.
+  // 20 s cadence: consensus on Studionet takes tens of seconds to minutes,
+  // and every poll is one more request from the shared hourly RPC budget.
   let receipt = null;
   try {
-    receipt = await c.waitForTransactionReceipt({ hash, interval: 10_000, retries: 90 });
+    receipt = await c.waitForTransactionReceipt({ hash, interval: 20_000, retries: 60 });
   } catch { /* keep the hash */ }
   return { hash: String(hash), receipt };
 }

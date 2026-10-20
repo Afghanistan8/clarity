@@ -139,7 +139,7 @@ export default function App() {
         const ok = await refresh(true);
         fails = ok ? 0 : Math.min(fails + 1, 6);
       }
-      const wait = fails === 0 ? (loaded ? 60000 : 5000) : fails <= 2 ? 30000 : 90000;
+      const wait = fails === 0 ? (loaded ? 60000 : 4000) : fails <= 8 ? 6000 : 15000;
       timer = setTimeout(loop, wait);
     };
     timer = setTimeout(loop, 4000);
@@ -234,14 +234,32 @@ export default function App() {
     }
   }, [wallet, wrongNetwork, txPending, refresh, flash]);
 
-  const open = useCallback(async (id) => {
-    try {
-      setDetail(await loadDetail(id));
-      setDetailId(Number(id));
-    } catch (e) {
-      flash("Could not load vow: " + clip(String(e?.message ?? e)), "err");
+  const open = useCallback(async (id = 0) => {
+    // the shared Studionet RPC opens in short windows — a single failed read
+    // must not slam the door on the user: hunt quietly, toast only on timeout
+    for (let attempt = 0; attempt < 40; attempt++) {
+      try {
+        setDetail(await loadDetail(id));
+        setDetailId(Number(id));
+        return;
+      } catch (e) {
+        if (attempt === 39) {
+          flash("Could not load vow — the RPC is busy; try again in a minute", "err");
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 2500));
+      }
     }
   }, [flash]);
+
+  // deep link: #vow=N opens a vow's drawer directly (shareable, and the
+  // harness uses it to dodge flaky RPC windows)
+  const openRef = useRef(open);
+  openRef.current = open;
+  useEffect(() => {
+    const m = window.location.hash.match(/vow=(\d+)/);
+    if (m) openRef.current(Number(m[1]));
+  }, []);
 
   // keep the open drawer fresh — every poll costs RPC budget, and the
   // consensus flow on Studionet takes minutes, so 25 s is plenty
