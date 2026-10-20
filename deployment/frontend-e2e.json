@@ -1,0 +1,94 @@
+{
+  "contract": "0x7c1EbD696BaEd71fD526eF3A4ffA295Baf24b14A",
+  "network": "studionet",
+  "chain_id": 61999,
+  "run": "frontend end-to-end through the web UI (simulated OKX wallet over EIP-6963, real funded keys)",
+  "record": "docs/FRONTEND_E2E.md",
+  "accounts": {
+    "founder": "0xBD4fb34FC0FBBf0236FB9D8Ea5eCfC944739c241",
+    "backerDoubt": "0x232fA2E1ee8d72cD6d79019Ba6d500453571287E",
+    "backerFaith": "0x0A458Dd1c48713830d431f0Cf4a8fA2a6B921c48"
+  },
+  "evidence_url": "https://raw.githubusercontent.com/Afghanistan8/clarity/main/demo/evidence-frontend.md",
+  "vows": {
+    "2": {
+      "title": "CLARITY FRONTEND PROOF ONE",
+      "status": "complete",
+      "deadline": "2026-10-20T09:59:00Z",
+      "txs": {
+        "create": "0x1eef22507bf5c648912c3088b0c4ff28fd11444493728148eca0ec489eb5a134",
+        "assess": "0x925bb76189d19e6865883594ffbbbd1844011ae85226ed1c40bedae8ca8485d5",
+        "finalize": "0xa57a5e883bebc6b91665fd08ebb66ba773f2fd26241dbefebb51c298509ab18d",
+        "claims": {
+          "founder": "0xd6d604736a7c9c453f652bc98069717f37704a9751b117a561e47387c274362b"
+        }
+      },
+      "verdict": "UNCLEAR",
+      "verdict_name": "not grounded (contained=false — wrapped evidence lines; fail-closed)",
+      "views": {
+        "get_evidence": {
+          "status": 200,
+          "procedure": "OK",
+          "tier": "PERMALINK",
+          "page_date": "2026-10-20",
+          "contained": false,
+          "demoted_by_dispute": false
+        },
+        "get_settlement": {
+          "verdict": "UNCLEAR",
+          "burned": 0,
+          "to_proposer": "10000000000000000000",
+          "to_faith": 0,
+          "to_doubt": 0
+        },
+        "get_entitlements": {
+          "founder": {
+            "amount": "10000000000000000000",
+            "claimed": true,
+            "present": true
+          }
+        },
+        "receipts": [
+          "VOW_CREATED stake=10000000000000000000",
+          "ASSESSED verdict=UNCLEAR,tier=PERMALINK,proc=OK,reason=UNGROUNDED",
+          "VOW_SETTLED verdict=UNCLEAR,burned=0"
+        ]
+      }
+    },
+    "3": {
+      "title": "CLARITY FRONTEND PROOF TWO",
+      "status": "partial — both sides backed via UI; post-deadline steps stopped by the global gen_call 500/hour bucket",
+      "deadline": "2026-10-20T12:53:00Z",
+      "txs": {
+        "create": "0x15f1a5935e684d7c63ad597a159c12d4f727c68146fbcdb04b262ee4c4a31e2e",
+        "backings": {
+          "doubt": "0x866be6e5d25a39a21c78795bc5f58f960852d6985357f643a9e75f35059335fe",
+          "faith": "0x1cbf51bcc2a7c0506a5f78182243b00f1514d258552d51982a7079ee718b85e5"
+        }
+      },
+      "views": {
+        "get_vow": {
+          "state": 1,
+          "state_name": "OPEN (deadline passed; unassessed)",
+          "doubt_total": "1000000000000000000",
+          "doubt_n": 1,
+          "faith_total": "1000000000000000000",
+          "faith_n": 1,
+          "stake": "10000000000000000000"
+        }
+      },
+      "resume": "anyone may assess at any time (evidence page now has the single-line quote); if untouched, the 72h grace settles it UNCLEAR (all stakes refundable) — finalize allowed after 2026-10-23T12:53Z"
+    }
+  },
+  "last_verified_stats": {
+    "escrow": "34000000000000000000",
+    "dispatched": "22000000000000000000",
+    "outstanding": 0,
+    "burned_total": 0,
+    "unfinalized": "12000000000000000000",
+    "vow_count": 3,
+    "invariant": "consistent=true"
+  },
+  "pooled_payout_reference": "deployment/live-e2e.json — CLI run completed FULFILLED settlement with pool streaming and dual claims through the same contract",
+  "stopped_at": "2026-10-20T12:51:56Z"
+}
