@@ -80,6 +80,9 @@ async function loadDetail(id) {
 
 export default function App() {
   const [wallet, setWallet] = useState(null);        // { address, wrong }
+  const [wallets, setWallets] = useState([]);        // installed providers
+  const [walletId, setWalletId] = useState(null);    // chosen provider id
+  const [picker, setPicker] = useState(false);
   const [noWallet, setNoWallet] = useState(false);
   const [stats, setStats] = useState(null);
   const [invariant, setInvariant] = useState(null);
@@ -135,9 +138,27 @@ export default function App() {
     return () => clearInterval(t);
   }, [loaded, refresh]);
 
-  // wallet wiring (EIP-1193 events + a light poll as a fallback)
+  // discover installed wallets once. If the user already granted access to
+  // the persisted choice, surface the connected address immediately.
   useEffect(() => {
-    if (!api.hasWallet()) { setNoWallet(true); return; }
+    (async () => {
+      await api.initWallets();
+      const list = api.listWallets();
+      setWallets(list.slice());
+      if (list.length === 0) { setNoWallet(true); return; }
+      setWalletId((api.activeWallet() ?? list[0]).id);
+      try {
+        const accs = await api.walletAddresses();
+        if (accs?.[0]) setWallet({ address: accs[0], wrong: false });
+      } catch { /* not connected yet — the picker handles it */ }
+    })();
+  }, []);
+
+  // EIP-1193 events + a light chain poll, attached to the CHOSEN provider
+  useEffect(() => {
+    const active = api.activeWallet();
+    if (!active) return;
+    const p = active.provider;
     const onAccounts = (accs) =>
       setWallet((w) => ({ address: accs?.[0] ?? null, wrong: w ? w.wrong : false }));
     const syncChain = async () => {
@@ -146,25 +167,27 @@ export default function App() {
         setWallet((w) => (w ? { ...w, wrong: cid !== CHAIN_ID } : w));
       } catch { /* ignore */ }
     };
-    window.ethereum.on?.("accountsChanged", onAccounts);
-    window.ethereum.on?.("chainChanged", syncChain);
-    api.walletAddresses()
-      .then((accs) => { if (accs?.[0]) setWallet({ address: accs[0], wrong: false }); })
-      .catch(() => { });
+    p.on?.("accountsChanged", onAccounts);
+    p.on?.("chainChanged", syncChain);
     syncChain();
     const t = setInterval(syncChain, 4000);
     return () => {
       clearInterval(t);
-      window.ethereum.removeListener?.("accountsChanged", onAccounts);
-      window.ethereum.removeListener?.("chainChanged", syncChain);
+      p.removeListener?.("accountsChanged", onAccounts);
+      p.removeListener?.("chainChanged", syncChain);
     };
-  }, []);
+  }, [walletId]);
 
-  const connect = async () => {
+  const pickAndConnect = async (id) => {
     try {
+      const w = api.chooseWallet(id);
+      setWalletId(w.id);
+      setWallet({ address: null, wrong: false });
+      setNoWallet(false);
       const a = await api.connectWallet();
       setWallet({ address: a, wrong: false });
-      flash("Wallet connected · chain locked to Studionet");
+      setPicker(false);
+      flash(`Connected via ${api.walletName?.() ?? w.name ?? "wallet"} · chain locked to Studionet`);
     } catch (e) {
       if (String(e?.message ?? e).includes("NO_WALLET")) setNoWallet(true);
       else flash("Connect failed: " + clip(String(e?.message ?? e)), "err");
@@ -231,7 +254,7 @@ export default function App() {
 
       <TopBar
         wallet={wallet} noWallet={noWallet} wrongNetwork={wrongNetwork}
-        connect={connect} sw={correctNetwork} stats={stats} invOk={invOk} invBad={invBad}
+        openPicker={() => setPicker(true)} sw={correctNetwork} stats={stats} invOk={invOk} invBad={invBad}
       />
 
       <main className="container">
@@ -242,14 +265,14 @@ export default function App() {
           </div>
         )}
 
-        {noWallet && <NoWalletBanner connect={connect} />}
+        {noWallet && <NoWalletBanner openPicker={() => setPicker(true)} />}
 
         <Hero invariant={invariant} stats={stats} />
         <HowItWorks />
         <ParamsSection constants={constants} />
         <CreateVow
           run={run} constants={constants} refresh={refresh} txPending={txPending}
-          wrongNetwork={wrongNetwork} hasWallet={!!wallet?.address}
+          wrongNetwork={wrongNetwork} hasWallet={!!wallet?.address} openPicker={() => setPicker(true)}
         />
         <VowList ledger={ledger} open={open} refresh={refresh} now={now} />
       </main>
@@ -268,6 +291,13 @@ export default function App() {
           myAddress={wallet?.address} wrongNetwork={wrongNetwork}
           hasWallet={!!wallet?.address}
           run={run} refresh={refresh}
+        />
+      )}
+
+      {picker && (
+        <WalletPicker
+          wallets={wallets} walletId={walletId} onPick={pickAndConnect}
+          close={() => setPicker(false)}
         />
       )}
 
@@ -290,7 +320,7 @@ export default function App() {
 // top bar                                                                 //
 // ---------------------------------------------------------------------- //
 
-function TopBar({ wallet, noWallet, wrongNetwork, connect, sw, stats, invOk, invBad }) {
+function TopBar({ wallet, noWallet, wrongNetwork, openPicker, sw, stats, invOk, invBad }) {
   return (
     <header className="topbar-wrap">
       <div className="container topbar">
@@ -309,7 +339,9 @@ function TopBar({ wallet, noWallet, wrongNetwork, connect, sw, stats, invOk, inv
           )}
           <span className="chain-chip">Studionet · 61999</span>
           {wallet?.address && !wrongNetwork && (
-            <button className="walletchip" onClick={sw} title="connected wallet (click to re-check network)">
+            <button className="walletchip" onClick={openPicker}
+              title={`${api.walletName?.() ?? "Wallet"} — click to change wallet`}
+            >
               <span className="dot dot-ok" />
               {api.shortAddr(wallet.address)}
             </button>
@@ -320,7 +352,7 @@ function TopBar({ wallet, noWallet, wrongNetwork, connect, sw, stats, invOk, inv
             </button>
           )}
           {!noWallet && !wallet?.address && (
-            <button className="btn btn-solid" onClick={connect}>Connect wallet</button>
+            <button className="btn btn-solid" onClick={openPicker}>Connect wallet</button>
           )}
           {noWallet && <span className="chain-chip"><span className="dot dot-warn" /> no wallet — read-only</span>}
         </div>
@@ -329,14 +361,53 @@ function TopBar({ wallet, noWallet, wrongNetwork, connect, sw, stats, invOk, inv
   );
 }
 
-function NoWalletBanner({ connect }) {
+function NoWalletBanner({ openPicker }) {
   return (
     <div className="banner banner-info">
       <span>
-        <b>Read-only mode.</b> You are browsing without a wallet — everything on this page is read straight
-        from the chain. Install MetaMask or any EIP-1193 wallet to create vows, back them or claim payouts.
+        <b>Read-only mode.</b> You are browsing without a connected wallet — everything on this page
+        is read straight from the chain. Pick your wallet (OKX is detected automatically) to
+        create vows, back them or claim payouts.
       </span>
-      <button className="btn" onClick={connect}>Check again</button>
+      <button className="btn" onClick={openPicker}>Choose a wallet</button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------- //
+// wallet picker modal                                                     //
+// ---------------------------------------------------------------------- //
+
+function WalletPicker({ wallets, walletId, onPick, close }) {
+  return (
+    <div className="picker-back" onClick={close}>
+      <div className="picker" onClick={(e) => e.stopPropagation()}>
+        <button className="drawer-x" onClick={close} aria-label="close">✕</button>
+        <h3 className="picker-title">Choose a wallet</h3>
+        <p className="muted small picker-sub">
+          Every EIP-1193 wallet installed in this browser is listed below. Signing always
+          happens inside the app you pick; on-chain reads stay wallet-free.
+        </p>
+        <div className="picker-list">
+          {wallets.map((w) => (
+            <button
+              key={w.id}
+              className={`wrow ${w.id === walletId ? "wrow-on" : ""}`}
+              onClick={() => onPick(w.id)}
+            >
+              <span className="wrow-ic">
+                {w.icon ? <img src={w.icon} alt="" /> : <span aria-hidden="true">◇</span>}
+              </span>
+              <span className="wrow-name">{w.name}</span>
+              {w.id === walletId && <span className="pill pill-info">ACTIVE</span>}
+            </button>
+          ))}
+        </div>
+        <p className="muted small picker-note">
+          Clarity locks everything to Studionet (chain 61999) — the wallet is prompted to
+          switch automatically if it is on another network.
+        </p>
+      </div>
     </div>
   );
 }
@@ -480,7 +551,7 @@ function ParamsSection({ constants }) {
 // creation form                                                           //
 // ---------------------------------------------------------------------- //
 
-function CreateVow({ run, constants, refresh, txPending, wrongNetwork, hasWallet }) {
+function CreateVow({ run, constants, refresh, txPending, wrongNetwork, hasWallet, openPicker }) {
   const [text, setText] = useState("");
   const [deadlineLocal, setDeadlineLocal] = useState("");
   const [url, setUrl] = useState("");
@@ -594,7 +665,8 @@ function CreateVow({ run, constants, refresh, txPending, wrongNetwork, hasWallet
 
         <div className="create-foot">
           <button
-            className="btn btn-solid btn-lg" disabled={txPending} onClick={submit}
+            className="btn btn-solid btn-lg" disabled={txPending}
+            onClick={() => (hasWallet ? submit() : openPicker())}
           >
             {hasWallet
               ? (wrongNetwork ? "Switch to Studionet first" : txPending ? "Waiting for signature…" : "Stake 10 GEN — create vow")

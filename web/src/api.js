@@ -22,16 +22,110 @@ export { CONTRACT_ADDRESS };
 export const GEN = 10n ** 18n;
 
 // ------------------------------------------------------------------ //
-// wallet plumbing                                                      //
+// wallet plumbing — multi-wallet aware (you may have several injected) //
 // ------------------------------------------------------------------ //
+//
+// Modern wallets announce themselves over EIP-6963; older ones only plant
+// globals (window.ethereum / window.okxwallet / window.kplr). When several
+// installed, window.ethereum is a race — so we build an explicit list and
+// let the user pick. The choice is persisted; OKX is preferred by default.
+
+const CHOICE_KEY = "clarity.wallet";
+let _walletList = null;                       // resolved by initWallets()
+let _choice = "";
+try { _choice = localStorage.getItem(CHOICE_KEY) ?? ""; } catch { /* private mode */ }
+
+function _sortKey(wallet) {
+  const n = String(wallet.name ?? "").toLowerCase();
+  if (n.includes("okx")) return 0;            // user's preferred wallet
+  if (n.includes("metamask")) return 1;
+  if (n.includes("kplr")) return 2;
+  if (n.includes("coinbase")) return 3;
+  return 4;
+}
+
+/** Discover every installed EIP-1193 provider and lock in the persisted
+ *  choice (or the highest-priority default). Call once at app start. */
+export async function initWallets() {
+  if (_walletList) return activeWallet();
+  const found = new Map();                    // provider object -> wallet
+  const add = (wallet) => {
+    if (!wallet || !wallet.provider) return;
+    const prev = found.get(wallet.provider);
+    if (!prev || (wallet.icon && !prev.icon)) found.set(wallet.provider, wallet);
+  };
+  // 1) EIP-6963 announcements
+  const onAnnounce = (e) => {
+    const d = e.detail ?? {};
+    if (d.info && d.provider) {
+      add({
+        id: d.info.rdns || d.info.uuid,
+        name: d.info.name || "Wallet",
+        icon: d.info.icon || null,
+        provider: d.provider,
+      });
+    }
+  };
+  window.addEventListener("eip6963:announceProvider", onAnnounce);
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+  // 2) well-known globals (wallets without 6963 support)
+  if (window.okxwallet) add({ id: "okx-static", name: "OKX", icon: null, provider: window.okxwallet });
+  if (window.kplr) add({ id: "kplr-static", name: "KPLR", icon: null, provider: window.kplr });
+  // 3) the generic window.ethereum proxy last — it may be ANY wallet above
+  if (window.ethereum) {
+    const providers = Array.isArray(window.ethereum?.providers)
+      ? window.ethereum.providers
+      : [window.ethereum];
+    for (const p of providers) {
+      const name =
+        p.isOKExWallet || p.isOkxWallet ? "OKX"
+        : p.isMetaMask ? "MetaMask"
+        : p.isCoinbaseWallet ? "Coinbase Wallet"
+        : p.isKplr ? "KPLR"
+        : "Injected wallet";
+      add({ id: name.toLowerCase().replace(/\s+/g, "-"), name, icon: null, provider: p });
+    }
+  }
+  // announcements land synchronously in practice; give slower wallets a beat
+  await new Promise((r) => setTimeout(r, 300));
+  window.removeEventListener("eip6963:announceProvider", onAnnounce);
+  _walletList = [...found.values()].sort((a, b) => _sortKey(a) - _sortKey(b));
+  // a persisted choice that no longer exists (uninstalled) is forgotten
+  if (_choice && !_walletList.some((w) => w.id === _choice)) _choice = "";
+  return activeWallet();
+}
+
+export function listWallets() {
+  return _walletList ?? [];
+}
+
+export function activeWallet() {
+  if (!_walletList || _walletList.length === 0) return null;
+  return _walletList.find((w) => w.id === _choice) ?? _walletList[0];
+}
+
+export function chooseWallet(id) {
+  _choice = String(id ?? "");
+  try { localStorage.setItem(CHOICE_KEY, _choice); } catch { /* private mode */ }
+  return activeWallet();
+}
+
+export function chosenWalletId() {
+  return _choice || null;
+}
 
 export function hasWallet() {
-  return typeof window !== "undefined" && !!window.ethereum;
+  return !!activeWallet();
+}
+
+export function walletName() {
+  return activeWallet()?.name ?? null;
 }
 
 export function provider() {
-  if (!hasWallet()) throw new Error("NO_WALLET");
-  return window.ethereum;
+  const w = activeWallet();
+  if (!w) throw new Error("NO_WALLET");
+  return w.provider;
 }
 
 export async function walletAddresses() {
@@ -79,12 +173,12 @@ export async function connectWallet() {
 }
 
 function client(address) {
-  // a string account + injected provider => all signing methods are routed
-  // through the EIP-1193 wallet; reads are plain RPC.
+  // a string account + the chosen injected provider => all signing methods
+  // are routed through that wallet; reads are plain RPC.
   return createClient({
     chain: CHAIN,               // carries the Studionet RPC urls
     account: address,           // undefined => read-only client
-    provider: hasWallet() ? window.ethereum : undefined,
+    provider: hasWallet() ? provider() : undefined,
   });
 }
 
